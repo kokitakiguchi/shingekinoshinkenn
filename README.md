@@ -24,6 +24,7 @@
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 全体構成図・Firebase データモデル・連携の仕様 | 全員（特に繋ぎ込み担当） |
 | [docs/BRANCH_STRATEGY.md](docs/BRANCH_STRATEGY.md) | ブランチ運用・コミット/PR ルール・コンフリクト回避 | 全員 |
 | [docs/SETUP.md](docs/SETUP.md) | 環境構築（iOS / Web / Firebase） | 全員 |
+| [docs/TAKI.md](docs/TAKI.md) | たき個人の作業メモ＆チェックリスト | たき |
 
 ---
 

@@ -23,7 +23,7 @@ cd shingekinoshinkenn
 - **CoreMotion**：傾き・加速度の検知、構え／抜刀完了の判定
 - **CoreHaptics**：武器ごとの振動演出
 - **SwiftUI**：スタート画面 / 剣セレクト画面 / 抜刀待機画面の UI と、上記ロジックとの結線
-- **Firebase**：抜刀完了でステータス更新（§3 を参照）
+- ※ **Firestore への書き込み（iOS ↔ Firebase 連携）は はる が担当**。たきは検知したイベント／状態を渡すところまで（§3 を参照）。
 
 **必要なもの**
 - macOS ＋ **Xcode**（最新版推奨）
@@ -65,7 +65,7 @@ npx serve
 
 ---
 
-## 3. Firebase（全員 / セットアップはたき主導）
+## 3. Firebase（全員 / セットアップ・iOS連携とも はる 主導）
 
 リアルタイム連携の心臓部。[ARCHITECTURE.md](ARCHITECTURE.md) のデータモデルとセットで読む。
 
@@ -74,7 +74,7 @@ npx serve
 2. **Cloud Firestore** を有効化。最初は **テストモード**で開始（※公開前にルール見直し）。
 3. アプリを登録して接続情報（config）を取得：
    - **Web（はる・みずき）**：Web アプリを追加 → `firebaseConfig` を取得。
-   - **iOS（たき）**：iOS アプリを追加 → `GoogleService-Info.plist` をダウンロードし、Xcode プロジェクトに追加。Swift Package Manager で `firebase-ios-sdk` を追加。
+   - **iOS（はる）**：iOS アプリを追加 → `GoogleService-Info.plist` をダウンロードし、Xcode プロジェクトに追加。Swift Package Manager で `firebase-ios-sdk` を追加。※たきと組んで作業（実機・プロジェクトはたきの環境）。
 4. 接続情報をメンバーに共有（後述の注意あり）。
 
 **最初の動作確認**

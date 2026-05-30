@@ -14,9 +14,14 @@
     }
   </style>
   
-  <!-- TensorFlow.js and Pose Detection CDN (MediaPipe Pose Heavy Support) -->
+  <!-- TensorFlow.js core and converter CDNs -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@3.11.0/dist/tf-core.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@3.11.0/dist/tf-converter.min.js"></script>
+  
+  <!-- 💡 解決策: TensorFlow.js WebGL backend (これがないと No backend found エラーになります) -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@3.11.0/dist/tf-backend-webgl.min.js"></script>
+  
+  <!-- TensorFlow.js Pose Detection API -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.0.0/dist/pose-detection.min.js"></script>
   
   <!-- MediaPipe Pose Official SDK (Required for modelComplexity: 2) -->

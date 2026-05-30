@@ -90,6 +90,21 @@ enum WeaponType: String, CaseIterable, Identifiable {
         }
     }
 
+    // MARK: - 音源（AudioCustom）
+    //
+    // 振り抜き時に同期再生する音源。Bundle ルート直下の固定ファイルを直接指す
+    // （Bundle.url(forResource:withExtension:) でのリソース検索はしない）。
+
+    /// Bundle ルート直下に置いた音源ファイル名（拡張子込み）。無ければ nil。
+    var swingAudioFilename: String? {
+        switch self {
+        case .lightsaber:
+            return "ライトセーバ.mp3"
+        case .greatsword, .smallsword:
+            return nil
+        }
+    }
+
     // MARK: - パターン生成
 
     /// 常時鳴らすハム用のループパターン。
@@ -108,44 +123,49 @@ enum WeaponType: String, CaseIterable, Identifiable {
     }
 
     /// 振り抜いた瞬間に重ねる一発パターン。`boost` は 0..1 の振り強度。
-    func makeSwingPattern(boost: Float) throws -> CHHapticPattern {
+    /// - Parameter audioResourceID: 同期再生する音源（事前に engine に登録済みのもの）。
+    ///   nil なら振動のみ。
+    func makeSwingPattern(
+        boost: Float,
+        audioResourceID: CHHapticAudioResourceID? = nil
+    ) throws -> CHHapticPattern {
         let b = max(0, min(boost, 1.0))
+        var events: [CHHapticEvent] = []
         switch self {
         case .lightsaber:
-            // 立ち上がりの鋭い唸り → 高周波のトランジェントで「ブォン！」
-            let burst = CHHapticEvent(
-                eventType: .hapticContinuous,
-                parameters: [
-                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.6 + 0.4 * b),
-                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.9),
-                    CHHapticEventParameter(parameterID: .attackTime, value: 0.05),
-                    CHHapticEventParameter(parameterID: .decayTime, value: 0.2),
-                    CHHapticEventParameter(parameterID: .sustained, value: 0.0)
-                ],
-                relativeTime: 0,
-                duration: 0.25
-            )
-            let tail = CHHapticEvent(
+            // 仕様: transient 核 → ごく短い continuous の余韻で「ブォン！…」
+            events.append(CHHapticEvent(
                 eventType: .hapticTransient,
                 parameters: [
-                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.5 + 0.5 * b),
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.6 + 0.4 * b),
                     CHHapticEventParameter(parameterID: .hapticSharpness, value: 1.0)
                 ],
-                relativeTime: 0.22
-            )
-            return try CHHapticPattern(events: [burst, tail], parameters: [])
+                relativeTime: 0
+            ))
+            events.append(CHHapticEvent(
+                eventType: .hapticContinuous,
+                parameters: [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.45 + 0.45 * b),
+                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.85),
+                    CHHapticEventParameter(parameterID: .attackTime, value: 0.0),
+                    CHHapticEventParameter(parameterID: .decayTime, value: 0.22),
+                    CHHapticEventParameter(parameterID: .sustained, value: 0.0)
+                ],
+                relativeTime: 0.02,
+                duration: 0.25
+            ))
 
         case .greatsword:
             // 重い「ドゥンッ…」 強いインパクト → 長い低周波の余韻
-            let impact = CHHapticEvent(
+            events.append(CHHapticEvent(
                 eventType: .hapticTransient,
                 parameters: [
                     CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0),
                     CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.2)
                 ],
                 relativeTime: 0
-            )
-            let rumble = CHHapticEvent(
+            ))
+            events.append(CHHapticEvent(
                 eventType: .hapticContinuous,
                 parameters: [
                     CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.6 + 0.4 * b),
@@ -156,21 +176,19 @@ enum WeaponType: String, CaseIterable, Identifiable {
                 ],
                 relativeTime: 0.02,
                 duration: 0.65
-            )
+            ))
             // 着地の重み: 終盤に小さな低音タップを足して余韻に陰影を付ける
-            let settle = CHHapticEvent(
+            events.append(CHHapticEvent(
                 eventType: .hapticTransient,
                 parameters: [
                     CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.35 + 0.3 * b),
                     CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.1)
                 ],
                 relativeTime: 0.55
-            )
-            return try CHHapticPattern(events: [impact, rumble, settle], parameters: [])
+            ))
 
         case .smallsword:
             // 「シュッシュッ」 速くて鋭いパルス列
-            var events: [CHHapticEvent] = []
             let count = 3
             for i in 0..<count {
                 let fade = 1.0 - Float(i) * 0.15
@@ -186,7 +204,18 @@ enum WeaponType: String, CaseIterable, Identifiable {
                     relativeTime: Double(i) * 0.05
                 ))
             }
-            return try CHHapticPattern(events: events, parameters: [])
         }
+
+        // 振動と同じタイミングで音源も鳴らす（登録済みのときのみ）。
+        // 音は無編集（音程・音量を boost で変調しない）でそのまま鳴らす。
+        if let resourceID = audioResourceID {
+            events.append(CHHapticEvent(
+                audioResourceID: resourceID,
+                parameters: [],
+                relativeTime: 0
+            ))
+        }
+
+        return try CHHapticPattern(events: events, parameters: [])
     }
 }

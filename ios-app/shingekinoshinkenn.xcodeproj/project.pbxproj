@@ -6,6 +6,10 @@
 	objectVersion = 100;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		E7EC17B22FCADC4900AFEAF5 /* ライトセーバ.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = E7EC17B12FCADC4900AFEAF5 /* ライトセーバ.mp3 */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		E7BB06D02FCA9C200025B029 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,6 +31,7 @@
 		E7BB06C02FCA9C1E0025B029 /* shingekinoshinkenn.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = shingekinoshinkenn.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E7BB06CF2FCA9C200025B029 /* shingekinoshinkennTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = shingekinoshinkennTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E7BB06D92FCA9C200025B029 /* shingekinoshinkennUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = shingekinoshinkennUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E7EC17B12FCADC4900AFEAF5 /* ライトセーバ.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "ライトセーバ.mp3"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -73,6 +78,7 @@
 				E7BB06D22FCA9C200025B029 /* shingekinoshinkennTests */,
 				E7BB06DC2FCA9C200025B029 /* shingekinoshinkennUITests */,
 				E7BB06C12FCA9C1E0025B029 /* Products */,
+				E7EC17B12FCADC4900AFEAF5 /* ライトセーバ.mp3 */,
 			);
 			sourceTree = "<group>";
 		};
@@ -197,6 +203,7 @@
 		E7BB06BE2FCA9C1E0025B029 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
+				E7EC17B22FCADC4900AFEAF5 /* ライトセーバ.mp3 in Resources */,
 			);
 		};
 		E7BB06CD2FCA9C200025B029 /* Resources */ = {

@@ -17,9 +17,23 @@ DerivedData/
 .build/
 
 # ── Firebase / 秘密情報 ────────────────
-# 公開リポジトリにする場合はコメントを外して除外する
-# GoogleService-Info.plist
-# **/firebase-config.js
+# 公開リポジトリにするため除外する
+GoogleService-Info.plist
+**/GoogleService-Info.plist
+**/firebase-config.js
+
+# 環境変数・認証情報
+.env
+.env.*
+!.env.example
+*.bak
+secrets.*
+**/secrets.*
+*.pem
+*.key
+*.p8
+*.p12
+*.mobileprovision
 
 # ── Web (web-parent) ───────────────────
 node_modules/

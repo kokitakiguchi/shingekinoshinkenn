@@ -40,6 +40,7 @@ final class HapticManager: ObservableObject {
 
     init() {
         supportsHaptics = CHHapticEngine.capabilitiesForHardware().supportsHaptics
+        logger.notice("🪶 init: supportsHaptics=\(self.supportsHaptics, privacy: .public)（シミュレータでは常に false。実機で確認すること）")
         configureAudioSession()
         prepareEngine()
         registerWeaponAudio()
@@ -59,24 +60,28 @@ final class HapticManager: ObservableObject {
     }
 
     private func prepareEngine() {
-        guard supportsHaptics else { return }
+        guard supportsHaptics else {
+            logger.notice("🪶 prepareEngine: ❌ supportsHaptics=false のためエンジンを生成しません")
+            return
+        }
         do {
             let engine = try CHHapticEngine()
 
             engine.resetHandler = { [weak self] in
-                self?.logger.debug("Haptic engine reset; restarting.")
+                self?.logger.notice("🪶 ⚠️ engine reset → 再起動します")
                 try? self?.engine?.start()
                 self?.registerWeaponAudio() // リソース ID は再登録が要る
             }
 
             engine.stoppedHandler = { [weak self] reason in
-                self?.logger.debug("Haptic engine stopped: \(reason.rawValue, privacy: .public)")
+                self?.logger.notice("🪶 ⚠️ engine stopped: reason=\(reason.rawValue, privacy: .public)")
             }
 
             try engine.start()
             self.engine = engine
+            logger.notice("🪶 prepareEngine: ✅ エンジン起動成功")
         } catch {
-            logger.error("Failed to start haptic engine: \(error.localizedDescription, privacy: .public)")
+            logger.error("🪶 prepareEngine: ❌ エンジン起動失敗: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -105,8 +110,10 @@ final class HapticManager: ObservableObject {
 
     /// 武器を装備し、常時ハムをループ再生し始める。
     func equip(_ weapon: WeaponType) {
+        logger.notice("🪶 equip: \(weapon.rawValue, privacy: .public) を装備します")
         disengage() // 既存ハムを止める
         guard supportsHaptics, let engine else {
+            logger.notice("🪶 equip: ⚠️ 非対応端末（supportsHaptics=\(self.supportsHaptics, privacy: .public)）のため状態のみ更新。振動は鳴りません")
             equippedWeapon = weapon // 状態だけ更新（非対応端末でも UI 動作確認できるよう）
             return
         }
@@ -125,8 +132,9 @@ final class HapticManager: ObservableObject {
             try player.start(atTime: CHHapticTimeImmediate)
             humPlayer = player
             equippedWeapon = weapon
+            logger.notice("🪶 equip: ✅ ハム再生開始 intensityAtRest=\(weapon.humIntensityAtRest, privacy: .public) sharpnessAtRest=\(weapon.humSharpnessAtRest, privacy: .public)（静止時 intensity=0 の武器は無音。動かすと鳴ります）")
         } catch {
-            logger.error("Failed to equip weapon: \(error.localizedDescription, privacy: .public)")
+            logger.error("🪶 equip: ❌ 装備失敗: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -146,13 +154,19 @@ final class HapticManager: ObservableObject {
     /// - 加速度に応じてハムの強度／鋭さを補間
     /// - 振り閾値を超えたら振りパターンを 1 発鳴らす（デバウンス付き）
     func updateMotion(accelerationMagnitude g: Double) {
-        guard let weapon = equippedWeapon else { return }
+        guard let weapon = equippedWeapon else {
+            // 未装備のまま加速度が来ている＝「構える」を押していない可能性
+            logger.debug("🪶 updateMotion: 未装備のためスキップ g=\(g, privacy: .public)")
+            return
+        }
         let normalized = Float(min(max(g, 0) / accelerationNormalizationCeiling, 1.0))
 
         if let player = humPlayer {
             let intensity = lerp(weapon.humIntensityAtRest, weapon.humIntensityAtMax, normalized)
             let sharpness = lerp(weapon.humSharpnessAtRest, weapon.humSharpnessAtMax, normalized)
             try? sendHumParameters(to: player, intensity: intensity, sharpness: sharpness)
+        } else {
+            logger.debug("🪶 updateMotion: ⚠️ humPlayer が nil（ハム未再生）g=\(g, privacy: .public)")
         }
 
         if g >= weapon.swingThreshold {
@@ -161,6 +175,7 @@ final class HapticManager: ObservableObject {
                 lastSwingTime = now
                 let span = max(accelerationNormalizationCeiling - weapon.swingThreshold, 0.0001)
                 let boost = Float(min((g - weapon.swingThreshold) / span, 1.0))
+                logger.notice("🪶 🎯 振り検出! g=\(String(format: "%.2f", g), privacy: .public) threshold=\(weapon.swingThreshold, privacy: .public) boost=\(String(format: "%.2f", boost), privacy: .public)")
                 playSwing(weapon: weapon, boost: boost)
             }
         }

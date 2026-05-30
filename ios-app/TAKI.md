@@ -110,5 +110,137 @@
 
 ---
 
+## サウンド（効果音）再生 仕様
+
+> 目的：今は **振動（CoreHaptics）だけ** でフィードバックしている。
+> これに **スピーカーからの効果音** を足して、「構える / 振る」が音でも分かるようにする。
+> 振動と同じトリガーに音を重ねるのが基本方針。
+
+### 1. 現状（なぜ今は鳴らないか）
+
+- アプリ内に **音声再生コードが一切ない**（`AVAudioPlayer` 等を使っていない）。
+- フィードバックは [`HapticManager.swift`](shingekinoshinkenn/HapticManager.swift) の CoreHaptics のみ。
+- バンドルに **音声ファイルも入っていない**。
+- → つまり「鳴らない」のは不具合ではなく **未実装**。音源ファイル追加 + 再生処理が必要。
+
+### 2. 音を鳴らす2つのタイミング（振動と対応させる）
+
+振動のトリガーは [`HapticManager.swift`](shingekinoshinkenn/HapticManager.swift) にある。これと同じ場所に音を足す。
+
+| タイミング | 振動側の処理 | 鳴らしたい音 | ループ |
+|------------|--------------|--------------|--------|
+| 構える（装備） | `equip(_:)` でハム開始 | 武器の「唸り（ハム）」をループ再生し、加速度で音量を変える | ◯ ループ |
+| 振り抜く | `updateMotion` 内の振り検出 → `playSwing` | 「シュッ / ドゥンッ」など一発の斬撃音 | × 単発 |
+| おさめる | `disengage()` | ハム音を停止（フェードアウト） | — |
+
+※ ハム音の「加速度で音量を変える」は CoreHaptics の dynamic parameter と同じ考え方を、`AVAudioPlayer.volume` で再現する。
+
+### 3. 音源ファイルの規約（自分で用意して追加する）
+
+- 形式：**`.wav`**（無圧縮・低レイテンシ。効果音はこれが無難）
+- 置き場所：`ios-app/shingekinoshinkenn/Sounds/` を作り、**Xcode の Target に追加**（Copy Bundle Resources に入ること）
+- ファイル名（武器の `rawValue` に合わせる。`WeaponType` は `lightsaber / greatsword / smallsword`）：
+
+  | 用途 | ファイル名 |
+  |------|-----------|
+  | ライトセーバーのハム | `lightsaber_hum.wav` |
+  | ライトセーバーの振り | `lightsaber_swing.wav` |
+  | 大剣のハム | `greatsword_hum.wav` |
+  | 大剣の振り | `greatsword_swing.wav` |
+  | 小剣のハム | `smallsword_hum.wav` |
+  | 小剣の振り | `smallsword_swing.wav` |
+
+- ハム音は **シームレスにループできる素材**（先頭と末尾が繋がる）にする。
+- 著作権フリー / 自作の音源のみ使用。リポジトリに入れてよいか要確認（容量・ライセンス）。
+
+### 4. 実装方針（新規 `SoundManager.swift`）
+
+`HapticManager` をいじり倒さず、対になる `SoundManager`（`AVAudioPlayer` ラッパー）を作り、
+`ContentView` と `HapticManager` のトリガーに合わせて呼ぶ。
+
+```
+SoundManager（新規, @MainActor / ObservableObject）
+├─ init()                  … AVAudioSession を設定（.playback or .ambient）
+├─ preload()               … 6ファイルを AVAudioPlayer に読み込み prepareToPlay()
+├─ startHum(_ weapon)      … 該当ハムを numberOfLoops = -1 でループ再生
+├─ updateHum(volume:)      … 加速度に応じて hum の volume を 0..1 で更新
+├─ playSwing(_ weapon)     … 振り音を単発再生（currentTime=0 → play()）
+└─ stopHum()               … ハムを停止
+```
+
+#### 結線ポイント
+
+- 構える：`ContentView` の equipButton で `haptics.equip` の隣に `sound.startHum(selectedWeapon)`
+- 加速度：`motion.start { g in haptics.updateMotion(...) ; sound.updateHum(volume: 正規化(g)) }`
+- 振り：振動の `playSwing` と同じ瞬間に `sound.playSwing(weapon)`
+  - 一番きれいなのは、振り検出を `HapticManager` から **コールバック / Combine で外に通知**し、`ContentView` で振動と音を同時に出す形。
+  - 手早くやるなら `HapticManager` に `SoundManager` を持たせて `playSwing` 内から直接鳴らす。
+- おさめる / 画面離脱：`disengage()` / `onDisappear` で `sound.stopHum()`
+
+#### AVAudioSession の注意
+
+- カテゴリは `.ambient`（マナースイッチで消える、BGMを止めない）か `.playback`（消音スイッチ無視で必ず鳴る）を用途で選ぶ。
+- **消音（サイレント）スイッチ ON だと `.ambient` では鳴らない** ＝ 「鳴らない」最頻の原因。デモは `.playback` 推奨。
+- `setActive(true)` を忘れない。
+
+### 5. 「鳴らない」ときの切り分けチェックリスト
+
+実装後に音が出ないときは上から順に確認：
+
+1. 端末の **消音スイッチ / 音量** が下がっていないか（`outputVolume == 0` をログで確認）
+2. **音源ファイルがバンドルに入っているか**（`Bundle.main.url(forResource:withExtension:)` が nil でないか）
+3. `AVAudioSession` の **category / setActive(true)** が成功しているか
+4. `AVAudioPlayer.play()` の **戻り値が true** か（false なら再生失敗）
+5. 振りトリガー自体が発火しているか（振動が出ているなら発火はしている → 音側の問題）
+6. シミュレータか実機か（音はシミュレータでも出るが、振動・加速度は実機のみ）
+
+→ 上記 1〜4 を `print` / `Logger` でログ出力してから実機で再生し、どこで止まるか特定する。
+（CoreHaptics 側は既に `Logger(subsystem: "shingekinoshinkenn", category: "Haptics")` で 🪶 付きログを出している。
+　Console.app / Xcode コンソールで `shingekinoshinkenn` でフィルタすると追える。）
+
+---
+
+## やりたいことリスト（できれば / 余力があれば）
+
+> 必須ではなく「できたら面白い」アイデア置き場。優先度は低めだが、企画の核に近いものから並べる。
+> 実装するときはここから1つ選んで別途タスク化する。
+
+### ◎ 空間オーディオ（攻撃の方向が音で分かる）
+
+- **やりたいこと**：効果音をただ鳴らすのではなく、「どの方向から斬撃／攻撃が来たか」を音の定位で表現する。ヘッドホン時に没入感が大きく上がる。
+- **使う技術**：Apple の **PHASE**（Physical Audio Spatialization Engine）／または `AVAudioEnvironmentNode` + `AVAudioPlayerNode`。ヘッドホンの向き連動まで狙うなら **CMHeadphoneMotionManager**（AirPods のヘッドトラッキング）。
+- **段階**：
+  1. まずは普通の `AVAudioPlayer`（[サウンド仕様](#サウンド効果音再生-仕様) のとおり）で「鳴る」を作る。
+  2. それを空間オーディオエンジンに載せ替え、音源に 3D 位置を持たせる。
+  3. 相手の攻撃イベント（方向つき）が来たら、その方向に音源を置いて鳴らす → 下のガードと連動。
+- **メモ**：方向の単位を先に決める（例：自分の正面を 0°、右 +90° のように。Watch ガードと共通の角度系にすると話が早い）。
+
+### ◎ Apple Watch で相手の攻撃をガードする
+
+- **やりたいこと**：相手の攻撃が来た方向（空間オーディオで聞こえた方向）へ、**Apple Watch を着けた腕を構えてガード**する。タイミングと方向が合えば防御成功、ズレたら被弾。
+- **体験の流れ（イメージ）**：
+  1. 相手が攻撃 → こちらに「攻撃イベント（方向・タイミング）」が届く。
+  2. iPhone（or AirPods）の空間オーディオで、その方向から斬撃音が鳴る。
+  3. プレイヤーは音の方向に Watch の腕をかざす。
+  4. Watch の姿勢（`attitude`）が攻撃方向と合致 ＆ タイミングが合えば **ガード成功**（Watch が成功の振動、iPhone が金属の受け止め音）。失敗なら被弾演出。
+- **使う技術**：
+  - **watchOS アプリ**（SwiftUI、iOS とコード共有しやすい）。
+  - Watch 側で **CoreMotion**（`attitude.quaternion` / roll・pitch）から腕の向きを取得。
+  - **WatchConnectivity** で iPhone ↔ Watch のイベント送受信（攻撃通知・ガード結果）。
+  - ガード成功時の手応えは **WKHapticType**（watchOS の触覚）。
+- **判定の考え方**：攻撃方向ベクトルと「Watch が向いている方向ベクトル」の内積（simd）が一定以上＝方向OK。さらに攻撃の着弾時刻との時間差が窓内＝タイミングOK。両方満たせば成功。
+- **段階**：
+  1. watchOS ターゲットを追加し、Watch の `attitude` を画面に出すだけのミニアプリ。
+  2. WatchConnectivity で iPhone に「今この向き」を送れるようにする。
+  3. iPhone から「攻撃が来た（方向X）」を送り、Watch で向き＆タイミング判定 → 成功/失敗を返す。
+  4. 空間オーディオの方向と、攻撃方向の角度系を揃えて統合。
+
+### 連携メモ（この2つはセットで効く）
+
+- 「攻撃イベント」のデータ形（**方向の角度 + 着弾タイミング**）を最初に1つ決めておくと、空間オーディオとガード判定の両方で使い回せる。
+- 攻撃を出すのは対戦相手 → ここは **はる の Firestore / 通信** と関わる領域。たき側は「方向つき攻撃イベントを受け取ったら、音を鳴らし、Watch のガード判定をする」ところを担当、という切り分けにできる。
+
+---
+
 ## 詰まっていること（ヘルプ要請）
 -

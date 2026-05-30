@@ -14,7 +14,7 @@
 main
 ├── feature/haru-battle   … はる（web-parent/ のカメラ・判定）
 ├── feature/ios-setup     … たき（ios-app/）
-└── feature/junior-ui     … みずき（ios-app/ の UI・web-parent/ の演出）
+└── feature/junior-ui     … みずき（web-parent/ の大画面 UI・演出）
 ```
 
 ---

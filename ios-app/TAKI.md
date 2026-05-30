@@ -1,7 +1,7 @@
 # たき 個人ドキュメント（作業メモ ＆ チェックリスト）
 
 たき個人の進捗・TODO・メモ用。自由に書き換えてOK。
-役割の全体像は [ROLES.md](ROLES.md)、連携仕様は [ARCHITECTURE.md](ARCHITECTURE.md)、開発の文脈メモは [../ios-app/CLAUDE.md](../ios-app/CLAUDE.md)。
+役割の全体像は [../docs/ROLES.md](../docs/ROLES.md)、連携仕様は [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)、開発の文脈メモは [CLAUDE.md](CLAUDE.md)。
 
 - **担当**：セットアップ ＆ iOS 全般（センサー・振動演出・スマホUI）
 - **フォルダ**：`ios-app/`
@@ -15,11 +15,12 @@
 ## やること
 
 ### セットアップ
-- [ ] Xcode で `ios-app/` のプロジェクトを開いて実機ビルドできる
-- [ ] 実機の「デベロッパを信頼」設定済み
+- [x] Xcode で `ios-app/shingekinoshinkenn.xcodeproj` を開いて実機ビルドできる
+- [x] 実機の「デベロッパを信頼」設定済み
 
 ### センサー（CoreMotion）
-- [x] 加速度・傾きの値を取得できる（`MotionManager` で `userAcceleration` を 60Hz 取得）
+- [x] 加速度の値を取得できる（`MotionManager` で `userAcceleration` のマグニチュードを 60Hz 取得）
+- [ ] 傾きの値を取得できる（`CMDeviceMotion.attitude` の roll / pitch など）
 - [x] 振り（スイング）検出（加速度マグニチュード閾値 + デバウンス）
 - [ ] 「腰（刀）」の構え判定
 - [ ] 「肩の後ろ（大剣）」の構え判定
@@ -116,12 +117,12 @@
 > これに **スピーカーからの効果音** を足して、「構える / 振る」が音でも分かるようにする。
 > 振動と同じトリガーに音を重ねるのが基本方針。
 
-### 1. 現状（なぜ今は鳴らないか）
+### 1. 現状
 
-- アプリ内に **音声再生コードが一切ない**（`AVAudioPlayer` 等を使っていない）。
-- フィードバックは [`HapticManager.swift`](shingekinoshinkenn/HapticManager.swift) の CoreHaptics のみ。
-- バンドルに **音声ファイルも入っていない**。
-- → つまり「鳴らない」のは不具合ではなく **未実装**。音源ファイル追加 + 再生処理が必要。
+- フィードバックの本体は [`HapticManager.swift`](shingekinoshinkenn/HapticManager.swift) の CoreHaptics。
+- `AVAudioPlayer` ベースの `SoundManager` はまだ未実装。
+- 例外として、`HapticManager` が `CHHapticEngine.registerAudioResource` と `AudioCustom` イベントで、ライトセーバーの振り音 `ライトセーバ.mp3` をハプティクスに同期再生する実験実装を持っている。
+- 大剣・小剣の音、構え中のハム音、加速度連動の音量変化は未実装。
 
 ### 2. 音を鳴らす2つのタイミング（振動と対応させる）
 
@@ -135,7 +136,13 @@
 
 ※ ハム音の「加速度で音量を変える」は CoreHaptics の dynamic parameter と同じ考え方を、`AVAudioPlayer.volume` で再現する。
 
-### 3. 音源ファイルの規約（自分で用意して追加する）
+### 3. 現在の音源ファイル
+
+- 現在 Xcode project に登録されている音源は、`ios-app/ライトセーバ.mp3` の 1 つ。
+- `WeaponType.swingAudioFilename` は Bundle ルート直下の `ライトセーバ.mp3` を直接参照する。
+- このファイルがない環境ではライトセーバーの振り音は登録されない。ハプティクス自体は鳴る。
+
+### 4. 今後の音源ファイル規約（SoundManager を作る場合）
 
 - 形式：**`.wav`**（無圧縮・低レイテンシ。効果音はこれが無難）
 - 置き場所：`ios-app/shingekinoshinkenn/Sounds/` を作り、**Xcode の Target に追加**（Copy Bundle Resources に入ること）
@@ -153,7 +160,7 @@
 - ハム音は **シームレスにループできる素材**（先頭と末尾が繋がる）にする。
 - 著作権フリー / 自作の音源のみ使用。リポジトリに入れてよいか要確認（容量・ライセンス）。
 
-### 4. 実装方針（新規 `SoundManager.swift`）
+### 5. 実装方針（新規 `SoundManager.swift`）
 
 `HapticManager` をいじり倒さず、対になる `SoundManager`（`AVAudioPlayer` ラッパー）を作り、
 `ContentView` と `HapticManager` のトリガーに合わせて呼ぶ。
@@ -183,12 +190,12 @@ SoundManager（新規, @MainActor / ObservableObject）
 - **消音（サイレント）スイッチ ON だと `.ambient` では鳴らない** ＝ 「鳴らない」最頻の原因。デモは `.playback` 推奨。
 - `setActive(true)` を忘れない。
 
-### 5. 「鳴らない」ときの切り分けチェックリスト
+### 6. 「鳴らない」ときの切り分けチェックリスト
 
 実装後に音が出ないときは上から順に確認：
 
 1. 端末の **消音スイッチ / 音量** が下がっていないか（`outputVolume == 0` をログで確認）
-2. **音源ファイルがバンドルに入っているか**（`Bundle.main.url(forResource:withExtension:)` が nil でないか）
+2. **音源ファイルがバンドルに入っているか**（現状の `AudioCustom` 実装では `Bundle.main.bundleURL.appendingPathComponent("ライトセーバ.mp3")` が存在するか）
 3. `AVAudioSession` の **category / setActive(true)** が成功しているか
 4. `AVAudioPlayer.play()` の **戻り値が true** か（false なら再生失敗）
 5. 振りトリガー自体が発火しているか（振動が出ているなら発火はしている → 音側の問題）

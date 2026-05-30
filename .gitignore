@@ -47,4 +47,4 @@ npm-debug.log*
 .idea/
 *.swp
 *.mp3
-
+!ios-app/ライトセーバ.mp3

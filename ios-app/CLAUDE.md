@@ -37,7 +37,7 @@
 
 - Swift / SwiftUI、**Xcode**（最新版）
 - **iPhone 実機必須**（CoreHaptics・CoreMotion はシミュレータ不可）
-- Firebase iOS SDK は **Swift Package Manager** で追加、`GoogleService-Info.plist` を同梱
+- Firebase iOS SDK は未導入。連携時に **Swift Package Manager** で追加し、`GoogleService-Info.plist` を同梱する
 - セットアップ詳細：[../docs/SETUP.md](../docs/SETUP.md)
 
 ---

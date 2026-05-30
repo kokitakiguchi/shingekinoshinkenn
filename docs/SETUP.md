@@ -31,7 +31,7 @@ cd shingekinoshinkenn
 - Apple ID（実機ビルド用の無料の開発者署名で OK）
 
 **手順**
-1. `ios-app/shingekinoshinkenn/` 内の `.xcodeproj`（または `.xcworkspace`）を Xcode で開く。
+1. `ios-app/shingekinoshinkenn.xcodeproj` を Xcode で開く。
 2. `Signing & Capabilities` で Team に自分の Apple ID を設定。
 3. iPhone を USB 接続し、ビルドターゲットを実機にして Run（▶）。
 4. 初回は iPhone 側で「デベロッパを信頼」する必要がある（設定 → 一般 → VPN とデバイス管理）。
@@ -74,7 +74,7 @@ npx serve
 2. **Cloud Firestore** を有効化。最初は **テストモード**で開始（※公開前にルール見直し）。
 3. アプリを登録して接続情報（config）を取得：
    - **Web（はる・みずき）**：Web アプリを追加 → `firebaseConfig` を取得。
-   - **iOS（はる）**：iOS アプリを追加 → `GoogleService-Info.plist` をダウンロードし、Xcode プロジェクトに追加。Swift Package Manager で `firebase-ios-sdk` を追加。※たきと組んで作業（実機・プロジェクトはたきの環境）。
+   - **iOS（はる）**：iOS アプリを追加 → `GoogleService-Info.plist` をダウンロードし、Xcode プロジェクトに追加。Swift Package Manager で `firebase-ios-sdk` を追加。※現状の iOS プロジェクトには未導入なので、たきと組んで作業（実機・プロジェクトはたきの環境）。
 4. 接続情報をメンバーに共有（後述の注意あり）。
 
 **最初の動作確認**

@@ -7,10 +7,31 @@
   
   <link rel="stylesheet" href="style.css">
   
-  <!-- 昼のドッキング用：要素を一瞬で非表示にできるユーティリティクラス -->
+  <!-- 昼 of ドッキング用：要素を一瞬で非表示にできるユーティリティクラス ＆ カメラ画角警告スタイル -->
   <style>
     .hidden {
       display: none !important;
+    }
+    .camera-warning {
+      background: rgba(231, 76, 60, 0.2);
+      border: 1px solid #e74c3c;
+      color: #ff7675;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-size: 0.85rem;
+      margin: 15px auto 5px;
+      max-width: 650px;
+      text-align: center;
+      font-weight: bold;
+      z-index: 50;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 4px 15px rgba(231, 76, 60, 0.15);
+      animation: pulseAlert 2s infinite alternate;
+      border-left: 5px solid #e74c3c;
+    }
+    @keyframes pulseAlert {
+      0% { box-shadow: 0 0 10px rgba(231, 76, 60, 0.2); }
+      100% { box-shadow: 0 0 20px rgba(231, 76, 60, 0.4); }
     }
   </style>
   
@@ -48,6 +69,11 @@
     <h1 class="game-title">SHINGEKI NO SHINKEN</h1>
     <div id="game-phase-title" class="subtitle">フェーズ：武器選択中</div>
   </header>
+  
+  <!-- 💡 カメラ画角の警告メッセージ表示エリア (1回生のUIを邪魔しないヘッダー直下) -->
+  <div class="camera-warning">
+    ⚠️【重要】骨格が消える場合は、Macの画面を少し手前に傾けて、胸とお腹が画面に入るようにしてください！
+  </div>
 
   <!-- Main Game Dashboard -->
   <main class="battle-container">
@@ -73,7 +99,7 @@
     <!-- Center Control (Live Visualizer Monitor) -->
     <div class="monitor-wrapper">
       <div class="monitor-border">
-        <!-- ビデオ要素を display: block で明示（style.cssでも定義されていますが、インラインで display: block を確実化） -->
+        <!-- ビデオ要素を display: block で明示 -->
         <video id="webcam" autoplay playsinline width="400" height="300" style="display: block;"></video>
         <!-- キャンバスIDを output_canvas に統一 -->
         <canvas id="output_canvas" width="400" height="300"></canvas>

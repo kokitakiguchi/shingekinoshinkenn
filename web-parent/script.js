@@ -783,6 +783,11 @@ async function initPoseBattleSystem() {
   try {
     setupStatus.textContent = "Official MediaPipe Pose 超安定全身エンジンを起動中...";
 
+    // 💡 SDKのロード状態を確実にチェックし、親切なエラーを投げる
+    if (typeof Pose === 'undefined' || typeof Camera === 'undefined') {
+      throw new Error("MediaPipe SDK (Pose または Camera) がブラウザにロードされていません。インターネット接続状態を確認するか、ブラウザキャッシュをクリアして再読み込みしてください。");
+    }
+
     // 💡 最高の起動率・描画安定性を誇るバニラ（生の公式SDK）を初期化
     poseEngine = new Pose({
       locateFile: (file) => {

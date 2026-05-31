@@ -286,15 +286,14 @@ function updateWeaponUI(playerKey, weaponKey) {
   }
 }
 
-// MediaPipe Pose 33点 接続ライン
+// MoveNet COCO 17点 接続ライン
 const SKELETON_CONNECTIONS = [
-  [11, 12],
-  [11, 13], [13, 15],
-  [12, 14], [14, 16],
-  [11, 23], [12, 24],
-  [23, 24],
-  [23, 25], [25, 27],
-  [24, 26], [26, 28]
+  [5, 6], // 両肩
+  [5, 7], [7, 9], // 左腕
+  [6, 8], [8, 10], // 右腕
+  [5, 11], [6, 12], [11, 12], // 胴体
+  [11, 13], [13, 15], // 左足
+  [12, 14], [14, 16]  // 右足
 ];
 
 // 武器選択用の固定ターゲット座標と半径の定義
@@ -475,10 +474,10 @@ function handleWeaponSelection(pose, playerKey, regStatusEl, cardEl) {
     const sel = selectionState[playerKey];
     if (sel.locked) return;
 
-    const leftShoulder = pose.keypoints[11];
-    const rightShoulder = pose.keypoints[12];
-    const leftWrist = pose.keypoints[15];
-    const rightWrist = pose.keypoints[16];
+    const leftShoulder = pose.keypoints[5];
+    const rightShoulder = pose.keypoints[6];
+    const leftWrist = pose.keypoints[9];
+    const rightWrist = pose.keypoints[10];
     const nose = pose.keypoints[0];
 
     // 肩の見切れに完全対応した、鼻・手首連携プレイヤー特定フォールバック
@@ -546,8 +545,8 @@ function handleWeaponSelection(pose, playerKey, regStatusEl, cardEl) {
     const ktRadius = getRadius("sword");
     if (!currentPoseDetecting) {
       // 刀の構えの精度向上：腕をダラーンと下ろした誤検知を防ぐため、「肘が130度以下に曲がっている」ことを必須条件化！
-      const leftElbow = pose.keypoints[13];
-      const rightElbow = pose.keypoints[14];
+      const leftElbow = pose.keypoints[7];
+      const rightElbow = pose.keypoints[8];
       
       // 右手での刀の構え判定
       let rightAngle = 180;
@@ -701,8 +700,8 @@ async function checkAllWeaponsSelected() {
 function processMovementLogics(pose, playerKey) {
   try {
     const state = playersState[playerKey];
-    const leftWrist = pose.keypoints[15];
-    const rightWrist = pose.keypoints[16];
+    const leftWrist = pose.keypoints[9];
+    const rightWrist = pose.keypoints[10];
 
     const currentLeftWristY = (leftWrist && leftWrist.score > 0.15) ? leftWrist.y : null;
     const currentRightWristY = (rightWrist && rightWrist.score > 0.15) ? rightWrist.y : null;
@@ -903,11 +902,11 @@ function drawSkeleton(poses) {
         if (pose.score < 0.15) return;
 
         try {
-          const leftShoulder = pose.keypoints[11];
-          const rightShoulder = pose.keypoints[12];
+          const leftShoulder = pose.keypoints[5];
+          const rightShoulder = pose.keypoints[6];
           const nose = pose.keypoints[0];
-          const leftWrist = pose.keypoints[15];
-          const rightWrist = pose.keypoints[16];
+          const leftWrist = pose.keypoints[9];
+          const rightWrist = pose.keypoints[10];
           
           let poseCenterX = 200;
           if (leftShoulder && rightShoulder && leftShoulder.score > 0.15 && rightShoulder.score > 0.15) {
@@ -948,7 +947,7 @@ function drawSkeleton(poses) {
             try {
               if (kp.score > 0.15) { 
                 ctx.beginPath();
-                const isWrist = (idx === 15 || idx === 16);
+                const isWrist = (idx === 9 || idx === 10);
                 ctx.arc(kp.x, kp.y, isWrist ? 7 : 5, 0, 2 * Math.PI);
                 ctx.fillStyle = isWrist ? '#ff3f34' : '#ffffff';
                 ctx.fill();
@@ -988,28 +987,35 @@ function drawSkeleton(poses) {
   }
 }
 
-// ── 💡 公式生SDKのコールバック処理 ──
-function onPoseResults(results) {
+// ── 💡 MoveNet 検出器インスタンス ──
+let poseDetector = null;
+
+// ── 💡 2人同時検出ループ（Webカメラフレーム毎に実行） ──
+async function detectionLoop() {
   if (!isDetecting) return;
   
   try {
-    const poses = [];
+    // 2人同時にポーズを推定
+    const rawPoses = await poseDetector.estimatePoses(videoElement, {
+      maxPoses: 2, // 同時に最大2人まで追跡
+      flipHorizontal: false
+    });
     
-    // results.poseLandmarks に全身33点のキーポイントが 0.0 〜 1.0 で入る
-    if (results.poseLandmarks) {
-      const formattedPose = {
-        score: 1.0,
-        keypoints: results.poseLandmarks.map((lm) => ({
-          x: lm.x * 400,
-          y: lm.y * 300,
-          score: 1.0 // 見切れや隠れ部位による描画ロストを防ぐため、キーポイントのスコアを強制的に1.0に固定！
+    const poses = rawPoses.map(pose => {
+      return {
+        score: pose.score,
+        keypoints: pose.keypoints.map(kp => ({
+          x: kp.x,
+          y: kp.y,
+          score: kp.score || 1.0 // 描画ロスト防止
         }))
       };
-      
-      poses.push(formattedPose);
-      
+    });
+    
+    // 検出インジケーターと状態の更新
+    if (poses.length > 0) {
       statusDot.classList.add('active');
-      statusText.textContent = "骨格検出中 (公式生エンジンロックオン)";
+      statusText.textContent = `骨格検出中 (同時${poses.length}人ロックオン)`;
     } else {
       statusDot.classList.remove('active');
       statusText.textContent = "カメラの前に立ってください";
@@ -1019,10 +1025,15 @@ function onPoseResults(results) {
       }
     }
     
-    // 的の強制描画 ＆ 骨格の描画を確実に実行
+    // 骨格および的の強制描画を実行！
     drawSkeleton(poses);
   } catch (err) {
-    console.log("onPoseResults エラー:", err);
+    console.log("detectionLoop エラー:", err);
+  }
+  
+  // 次フレームの呼び出し
+  if (isDetecting) {
+    requestAnimationFrame(detectionLoop);
   }
 }
 
@@ -1035,47 +1046,45 @@ function resetSelectionIfAbsent(playerKey, regStatusEl, cardEl) {
   } catch (e) {}
 }
 
-// ── 検出器初期化 ──
+// ── 検出器初期化（MoveNet MultiPose 超安定マルチポーズエンジン） ──
 async function initPoseBattleSystem() {
   try {
-    setupStatus.textContent = "Official MediaPipe Pose 超安定全身エンジンを起動中...";
+    setupStatus.textContent = "MoveNet 超軽量マルチポーズエンジンをロード中...";
 
     // SDKのロード状態を確実にチェックし、親切なエラーを投げる
-    if (typeof Pose === 'undefined' || typeof Camera === 'undefined') {
-      throw new Error("MediaPipe SDK (Pose または Camera) がブラウザにロードされていません。インターネット接続状態を確認するか、ブラウザキャッシュをクリアして再読み込みしてください。");
+    if (typeof poseDetection === 'undefined' || typeof tf === 'undefined') {
+      throw new Error("MoveNet (poseDetection) または TensorFlow.js がブラウザにロードされていません。インターネット接続状態を確認してください。");
     }
 
-    // 最高の起動率・描画安定性を誇るバニラ（生の公式SDK）を初期化
-    poseEngine = new Pose({
-      locateFile: (file) => {
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+    // TensorFlow backend WebGL の初期化
+    await tf.ready();
+    await tf.setBackend('webgl');
+
+    // MoveNet MultiPose 検出器の生成
+    poseDetector = await poseDetection.createDetector(
+      poseDetection.SupportedModels.MoveNet,
+      {
+        modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING,
+        enableSmoothing: true
       }
-    });
-
-    poseEngine.setOptions({
-      modelComplexity: 1, // 0: Lite, 1: Full
-      smoothLandmarks: true,
-      enableSegmentation: false,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5
-    });
-
-    poseEngine.onResults(onPoseResults);
+    );
 
     setupStatus.textContent = "Webカメラを起動中...";
 
-    // MediaPipe 公式 Camera ユーティリティでアスペクト比・ブラウザ互換を100%超安定化
-    cameraEngine = new Camera(videoElement, {
-      onFrame: async () => {
-        try {
-          await poseEngine.send({ image: videoElement });
-        } catch (sendErr) {}
-      },
-      width: 400,
-      height: 300
+    // 標準のMediaDevicesを用いて、400x300アスペクト比でカメラ取得
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 400, height: 300, facingMode: "user" },
+      audio: false
     });
-
-    await cameraEngine.start();
+    videoElement.srcObject = stream;
+    
+    // カメラのストリーム再生開始時に検出ループを始動する
+    await new Promise((resolve) => {
+      videoElement.onloadedmetadata = () => {
+        videoElement.play();
+        resolve();
+      };
+    });
 
     setupStatus.textContent = "ゲーム開始準備中...";
     gameStatus = "selecting";
@@ -1096,6 +1105,9 @@ async function initPoseBattleSystem() {
     setupFirestoreListener();
 
     isDetecting = true;
+    
+    // 検出ループを始動！
+    requestAnimationFrame(detectionLoop);
 
     setupOverlay.style.opacity = 0;
     setTimeout(() => setupOverlay.classList.add('hidden'), 500);

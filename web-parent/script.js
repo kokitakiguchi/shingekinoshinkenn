@@ -603,15 +603,16 @@ function handleWeaponSelection(pose, playerKey, regStatusEl, cardEl) {
     let debugWristKp2 = null;
 
     // ── 1. 【ライトセーバー（中）】 ──
-    const lsRadius = getRadius("lightsaber");
+    // ライトセーバーの判定エリアが大きすぎて他の構え（刀など）に誤爆するのを防ぐため、独自の厳格な半径を適用
+    const lsRadius = (sel.detectingWeapon === "lightsaber" ? 65 : 45) * scaleRatio;
     if (rightWrist && leftWrist && rightWrist.score > 0.15 && leftWrist.score > 0.15) {
       // 両手の中心（平均座標）で判定する！
       const centerWristX = (rightWrist.x + leftWrist.x) / 2;
       const centerWristY = (rightWrist.y + leftWrist.y) / 2;
       
       const dist = Math.hypot(centerWristX - dTargets.lightsaber.x, centerWristY - dTargets.lightsaber.y);
-      // 両手が合わさっていること（両手の距離が 65px * scaleRatio 以内）
-      const wristsClose = Math.hypot(rightWrist.x - leftWrist.x, rightWrist.y - leftWrist.y) < (65 * scaleRatio);
+      // 両手で握る構えを厳密に判定するため、両手首の近接距離を 35px * scaleRatio に厳格化
+      const wristsClose = Math.hypot(rightWrist.x - leftWrist.x, rightWrist.y - leftWrist.y) < (35 * scaleRatio);
       
       if (dist <= lsRadius && wristsClose) {
         currentPoseDetecting = "lightsaber";
@@ -962,6 +963,10 @@ function drawSkeleton(poses) {
             };
 
             const getDrawRadius = (wKey) => {
+              if (wKey === "lightsaber") {
+                const base = (selState.detectingWeapon === "lightsaber") ? 65 : 45;
+                return base * scale;
+              }
               const base = (selState.detectingWeapon === wKey) ? KEEP_RADIUS : TARGET_RADIUS;
               return base * scale;
             };

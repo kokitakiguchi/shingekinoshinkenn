@@ -211,6 +211,37 @@
         .preview-item.p1 { border-color: #ff416c; }
         .preview-item.p2 { border-color: #00f2fe; }
 
+        .start-panel {
+            width: 100%;
+            max-width: 900px;
+            padding: 50px 40px;
+            border-radius: 20px;
+            background: rgba(255,255,255,0.04);
+            border: 2px solid rgba(0, 242, 254, 0.2);
+            box-shadow: 0 25px 70px rgba(0, 0, 0, 0.6);
+            text-align: center;
+        }
+        .start-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 4rem;
+            letter-spacing: 0.2em;
+            margin-bottom: 10px;
+            color: #00f2fe;
+            text-shadow: 0 0 25px rgba(0, 242, 254, 0.4);
+        }
+        .start-subtitle {
+            font-size: 1.4rem;
+            color: #cbd7f5;
+            margin-bottom: 35px;
+            letter-spacing: 0.2em;
+        }
+        .start-copy {
+            font-size: 1rem;
+            color: #e5f5ff;
+            margin-bottom: 35px;
+            line-height: 1.8;
+        }
+
         .nav-buttons {
             display: flex;
             gap: 20px;
@@ -410,8 +441,20 @@
     <div id="audioNotice">📢 【SYSTEM】 最初に画面をクリックしてアクティベート</div>
 
     <div class="main-content">
+        <!-- スタート画面 -->
+        <div id="startScreen" class="screen active">
+            <div class="start-panel">
+                <div class="start-title">SHINGEKI</div>
+                <div class="start-subtitle">いい感じの言葉</div>
+                <div class="start-copy">ルール説明の前に、まずは構えを整えよう。<br>武器を選び、最初の一撃へと進みます。</div>
+                <div class="nav-buttons">
+                    <button class="btn btn-primary" onclick="switchScreen('guideScreen')">説明を見る</button>
+                </div>
+            </div>
+        </div>
+
         <!-- ゲーム説明画面 -->
-        <div id="guideScreen" class="screen active">
+        <div id="guideScreen" class="screen">
             <div class="guide-grid">
                 <div class="panel">
                     <div class="panel-title">ゲームルール <span>RULES</span></div>
@@ -521,8 +564,8 @@
 
         const sounds = {
             katana: new Audio('./sounds/斬撃1.mp3'),
-            taiken: new Audio('./sounds/斧で斬る1.mp3'),
-            sabers: new Audio('./sounds/laser-beam1.mp3')
+            taiken: new Audio('./sounds/大剣.mp3'),
+            sabers: new Audio('./sounds/ライトセーバー.mp3')
         };
 
         function unlockAudio() {

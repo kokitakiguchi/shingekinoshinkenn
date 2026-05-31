@@ -9,36 +9,50 @@ const slashText = document.getElementById('slashText');
 const body = document.body;
 
 // 🌟 【重要】音源はダウンロードして、htmlファイルと同じフォルダ（または指定の相対パス）に置いてください
-const sounds = {
-    katana: new Audio('./sounds/斬撃1.mp3'),
-    taiken: new Audio('./sounds/大剣.mp3'),
-    sabers: new Audio('./sounds/ライトセーバー.mp3')
+const soundFiles = {
+    katana: './sounds/斬撃1.mp3',
+    taiken: './sounds/大剣.mp3',
+    sabers: './sounds/ライトセーバー.mp3'
 };
+
+const sounds = {};
+for (const [key, src] of Object.entries(soundFiles)) {
+    const audio = new Audio(src);
+    audio.preload = 'auto';
+    audio.load();
+    sounds[key] = audio;
+}
 
 function unlockAudio() {
     if (isAudioUnlocked) return;
 
-    for (let key in sounds) {
-        sounds[key].muted = true;
-        sounds[key].play().then(() => {
-            const audio = sounds[key];
-            audio.pause();
-            audio.muted = false;
-            audio.currentTime = 0;
-        }).catch(e => console.log('Audio unlock wait...', e));
-    }
+    const unlockPromises = Object.values(sounds).map(audio => {
+        audio.muted = true;
+        return audio.play()
+            .then(() => {
+                audio.pause();
+                audio.currentTime = 0;
+                audio.muted = false;
+            })
+            .catch(e => console.log('Audio unlock wait...', e));
+    });
 
-    isAudioUnlocked = true;
-    const notice = document.getElementById('audioNotice');
-    if (notice) notice.style.display = 'none';
+    Promise.allSettled(unlockPromises).finally(() => {
+        isAudioUnlocked = true;
+        const notice = document.getElementById('audioNotice');
+        if (notice) notice.style.display = 'none';
+    });
 }
 
 function playWeaponSound(weaponType) {
     const audio = sounds[weaponType];
-    if (audio) {
-        audio.currentTime = 0;
-        audio.play().catch(e => console.error('再生エラー:', e));
+    if (!audio) {
+        console.warn('Unknown weapon sound:', weaponType);
+        return;
     }
+    audio.currentTime = 0;
+    audio.muted = false;
+    audio.play().catch(e => console.error('再生エラー:', e));
 }
 
 function triggerSlash(playerNum, weaponType) {

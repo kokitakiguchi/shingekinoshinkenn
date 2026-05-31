@@ -42,7 +42,8 @@ const p2Flash = document.getElementById('p2-flash');
 let gameStatus = "selecting";
 let timeRemaining = 90;
 let timerInterval = null;
-let detector = null;
+let poseEngine = null; // Official MediaPipe Pose インスタンス
+let cameraEngine = null; // Official MediaPipe Camera インスタンス
 let isDetecting = false;
 
 let p1Score = 0;
@@ -391,7 +392,7 @@ function handleWeaponSelection(pose, playerKey, regStatusEl, cardEl) {
 
       // 💡 超重要：外れてから 500ms（0.5秒）以内は、進捗を一切減らさず完璧にキープ！
       if (elapsedLost > 500) {
-        // 0.5秒を過ぎたら、1フレームあたり通常の 0.3 倍 of 速度でゆっくり減衰させる
+        // 0.5秒を過ぎたら、1フレームあたり通常の 0.3 倍の速度でゆっくり減衰させる
         sel.accumulatedTime = Math.max(0, (sel.accumulatedTime || 0) - dt * 0.3);
       }
       
@@ -730,14 +731,28 @@ function drawSkeleton(poses) {
   }
 }
 
-async function detectionLoop() {
+// ── 💡 公式生SDKのコールバック処理 ──
+function onPoseResults(results) {
   if (!isDetecting) return;
+  
   try {
-    const poses = await detector.estimatePoses(videoElement, { maxPoses: 2, flipHorizontal: false });
-    const activePoses = poses.filter(p => p.score > 0.15); // 0.15 に引き下げ
-    if (activePoses.length > 0) {
+    const poses = [];
+    
+    // results.poseLandmarks に全身33点のキーポイントが 0.0 〜 1.0 で入る
+    if (results.poseLandmarks) {
+      const formattedPose = {
+        score: 0.95,
+        keypoints: results.poseLandmarks.map((lm) => ({
+          x: lm.x * 400,
+          y: lm.y * 300,
+          score: lm.visibility // visibility を score として流用
+        }))
+      };
+      
+      poses.push(formattedPose);
+      
       statusDot.classList.add('active');
-      statusText.textContent = `骨格検出中 (ロックオン: ${activePoses.length}人)`;
+      statusText.textContent = "骨格検出中 (公式生エンジンロックオン)";
     } else {
       statusDot.classList.remove('active');
       statusText.textContent = "カメラの前に立ってください";
@@ -746,20 +761,18 @@ async function detectionLoop() {
         resetSelectionIfAbsent('player2', p2RegStatusEl, p2Card);
       }
     }
-    // 骨格が検出されていようがいまいが、絶対に drawSkeleton を呼び出し的と骨格線を強制描画
+    
+    // 的の強制描画 ＆ 骨格の描画を確実に実行
     drawSkeleton(poses);
-  } catch (e) {
-    console.log("Pose 推定・描画ループ中にエラー（握りつぶし）:", e);
-    try { drawSkeleton([]); } catch (err) {}
+  } catch (err) {
+    console.log("onPoseResults エラー（握りつぶし）:", err);
   }
-  requestAnimationFrame(detectionLoop);
 }
 
 function resetSelectionIfAbsent(playerKey, regStatusEl, cardEl) {
   try {
     const sel = selectionState[playerKey];
     if (!sel.locked && sel.detectingWeapon) {
-      // 瞬時にリセットせず、lastActiveTime を更新して減衰に任せることで誤リセットを防ぐ
       sel.lastActiveTime = Date.now();
     }
   } catch (e) {}
@@ -768,51 +781,39 @@ function resetSelectionIfAbsent(playerKey, regStatusEl, cardEl) {
 // ── 検出器初期化 ──
 async function initPoseBattleSystem() {
   try {
-    setupStatus.textContent = "MediaPipe Pose 検出器をロード中...";
-    
-    // 💡 ネットワーク負荷とCORSを回避し、絶対に100%確実に初期化を成功させる二段階フォールバック設計
-    try {
-      // 1段階目：実績のある modelComplexity: 1 (Full) ＆ 信頼度 0.5 で mediapipe runtime 初期化
-      detector = await poseDetection.createDetector(
-        poseDetection.SupportedModels.BlazePose,
-        {
-          runtime: 'mediapipe',
-          modelComplexity: 1, // Fullモデル (腰・胸・肩・手を含め全身を高精度かつ軽量・超安定ロード)
-          minDetectionConfidence: 0.5,
-          minTrackingConfidence: 0.5,
-          solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose'
-        }
-      );
-      console.log("MediaPipe runtime (Complexity:1) での検出器初期化に成功！");
-    } catch (mediapipeErr) {
-      console.warn("MediaPipe runtime のロードに失敗。TFJS runtime でフォールバック試行します...", mediapipeErr);
-      
-      // 2段階目：CORSや公共Wi-Fi等のCDN接続障害を回避するため、ローカル/TFJS runtime で再試行！
-      detector = await poseDetection.createDetector(
-        poseDetection.SupportedModels.BlazePose,
-        {
-          runtime: 'tfjs',
-          modelComplexity: 1,
-          minDetectionConfidence: 0.5,
-          minTrackingConfidence: 0.5
-        }
-      );
-      console.log("TFJS runtime での検出器フォールバック初期化に成功！");
-    }
+    setupStatus.textContent = "Official MediaPipe Pose 超安定全身エンジンを起動中...";
+
+    // 💡 最高の起動率・描画安定性を誇るバニラ（生の公式SDK）を初期化
+    poseEngine = new Pose({
+      locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+      }
+    });
+
+    poseEngine.setOptions({
+      modelComplexity: 1, // 0: Lite, 1: Full (全身を高精度かつ軽量・爆速ロード)
+      smoothLandmarks: true,
+      enableSegmentation: false,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+
+    poseEngine.onResults(onPoseResults);
 
     setupStatus.textContent = "Webカメラを起動中...";
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: 400, height: 300, facingMode: "user" },
-      audio: false
+
+    // MediaPipe 公式 Camera ユーティリティでアスペクト比・ブラウザ互換を100%超安定化
+    cameraEngine = new Camera(videoElement, {
+      onFrame: async () => {
+        try {
+          await poseEngine.send({ image: videoElement });
+        } catch (sendErr) {}
+      },
+      width: 400,
+      height: 300
     });
-    videoElement.srcObject = stream;
-    
-    await new Promise((resolve) => {
-      videoElement.onloadedmetadata = () => {
-        videoElement.play();
-        resolve();
-      };
-    });
+
+    await cameraEngine.start();
 
     setupStatus.textContent = "ゲーム開始準備中...";
     gameStatus = "selecting";
@@ -833,7 +834,6 @@ async function initPoseBattleSystem() {
     setupFirestoreListener();
 
     isDetecting = true;
-    requestAnimationFrame(detectionLoop);
 
     setupOverlay.style.opacity = 0;
     setTimeout(() => setupOverlay.classList.add('hidden'), 500);

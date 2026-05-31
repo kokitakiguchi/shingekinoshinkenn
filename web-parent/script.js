@@ -391,7 +391,7 @@ function handleWeaponSelection(pose, playerKey, regStatusEl, cardEl) {
 
       // 💡 超重要：外れてから 500ms（0.5秒）以内は、進捗を一切減らさず完璧にキープ！
       if (elapsedLost > 500) {
-        // 0.5秒を過ぎたら、1フレームあたり通常の 0.3 倍の速度でゆっくり減衰させる
+        // 0.5秒を過ぎたら、1フレームあたり通常の 0.3 倍 of 速度でゆっくり減衰させる
         sel.accumulatedTime = Math.max(0, (sel.accumulatedTime || 0) - dt * 0.3);
       }
       
@@ -454,8 +454,8 @@ function processMovementLogics(pose, playerKey) {
     const leftWrist = pose.keypoints[15];
     const rightWrist = pose.keypoints[16];
 
-    const currentLeftWristY = (leftWrist && leftWrist.score > 0.2) ? leftWrist.y : null;
-    const currentRightWristY = (rightWrist && rightWrist.score > 0.2) ? rightWrist.y : null;
+    const currentLeftWristY = (leftWrist && leftWrist.score > 0.15) ? leftWrist.y : null;
+    const currentRightWristY = (rightWrist && rightWrist.score > 0.15) ? rightWrist.y : null;
 
     let maxNormalizedDY = 0;
 
@@ -772,7 +772,7 @@ async function initPoseBattleSystem() {
     
     // 💡 ネットワーク負荷とCORSを回避し、絶対に100%確実に初期化を成功させる二段階フォールバック設計
     try {
-      // 1段階目：最高の精度を誇る mediapipe runtime (modelComplexity: 1) で初期化を試みる
+      // 1段階目：実績のある modelComplexity: 1 (Full) ＆ 信頼度 0.5 で mediapipe runtime 初期化
       detector = await poseDetection.createDetector(
         poseDetection.SupportedModels.BlazePose,
         {
@@ -783,7 +783,7 @@ async function initPoseBattleSystem() {
           solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose'
         }
       );
-      console.log("MediaPipe runtime での検出器初期化に成功！");
+      console.log("MediaPipe runtime (Complexity:1) での検出器初期化に成功！");
     } catch (mediapipeErr) {
       console.warn("MediaPipe runtime のロードに失敗。TFJS runtime でフォールバック試行します...", mediapipeErr);
       

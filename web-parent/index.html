@@ -1,136 +1,847 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SHINGEKI NO SHINKEN - BATTLE PANEL</title>
-  
-  <link rel="stylesheet" href="style.css">
-  
-  <!-- 昼のドッキング用：要素を一瞬で非表示にできるユーティリティクラス ＆ カメラ画角警告スタイル -->
-  <style>
-    .hidden {
-      display: none !important;
-    }
-    .camera-warning {
-      background: rgba(231, 76, 60, 0.2);
-      border: 1px solid #e74c3c;
-      color: #ff7675;
-      padding: 12px 24px;
-      border-radius: 12px;
-      font-size: 0.85rem;
-      margin: 15px auto 5px;
-      max-width: 650px;
-      text-align: center;
-      font-weight: bold;
-      z-index: 50;
-      backdrop-filter: blur(10px);
-      box-shadow: 0 4px 15px rgba(231, 76, 60, 0.15);
-      animation: pulseAlert 2s infinite alternate;
-      border-left: 5px solid #e74c3c;
-    }
-    @keyframes pulseAlert {
-      0% { box-shadow: 0 0 10px rgba(231, 76, 60, 0.2); }
-      100% { box-shadow: 0 0 20px rgba(231, 76, 60, 0.4); }
-    }
-  </style>
-  
-  <!-- MediaPipe Pose Official SDK & Camera Utilities (生SDKによる動作成功率100%完全リビルド) -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SHINGEKI NO SHINKEN - BATTLE PANEL</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Noto+Sans+JP:wght@500;900&display=swap" rel="stylesheet">
+    <style>
+        /* --- 共通の近未来スタジアム背景 --- */
+        :root {
+            --neon-cyan: #00f2fe;
+            --neon-magenta: #f35588;
+            --neon-yellow: #ffdd59;
+        }
+
+        body {
+            background-color: #0b0e14;
+            background-image:
+                linear-gradient(rgba(0, 242, 254, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 242, 254, 0.03) 1px, transparent 1px);
+            background-size: 30px 30px;
+            color: white;
+            font-family: 'Noto Sans JP', sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.05s ease;
+            position: relative;
+        }
+
+        .main-content {
+            flex-grow: 1;
+            position: relative;
+            padding: 20px;
+            width: 100%;
+            max-width: 1400px;
+            margin: 0 auto;
+            min-height: calc(100vh - 80px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .screen {
+            display: none;
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            padding: 20px 20px 60px;
+            animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        .screen.active {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.97); filter: blur(5px); }
+            to { opacity: 1; transform: scale(1); filter: blur(0); }
+        }
+
+        #audioNotice {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #ff9900, #ff5500);
+            color: black;
+            font-weight: bold;
+            padding: 12px 30px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            z-index: 100;
+            box-shadow: 0 0 20px rgba(255, 85, 0, 0.5);
+            letter-spacing: 1px;
+            border: 1px solid #fff;
+            animation: pulse 1.5s infinite alternate;
+            white-space: nowrap;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 0.9; }
+            100% { transform: scale(1.03); opacity: 1; }
+        }
+
+        .guide-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            width: 100%;
+            max-width: 980px;
+            margin: 0 auto;
+        }
+        .panel {
+            background: linear-gradient(180deg, rgba(16, 23, 37, 0.9) 0%, rgba(8, 12, 21, 0.95) 100%);
+            border: 2px solid #324665;
+            border-top: 4px solid #00f2fe;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+        }
+        .panel-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.6rem;
+            font-weight: 900;
+            margin-bottom: 25px;
+            border-bottom: 2px solid rgba(0, 242, 254, 0.3);
+            padding-bottom: 10px;
+            color: #00f2fe;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .panel-title span { font-size: 1rem; color: #aaa; }
+
+        .rule-box { margin-bottom: 25px; }
+        .rule-box h4 { color: #ccff00; margin-bottom: 8px; font-size: 1.2rem; }
+        .rule-box p { font-size: 1rem; color: #ddd; line-height: 1.6; margin: 0; }
+
+        .weapon-list { display: flex; flex-direction: column; gap: 20px; }
+        .weapon-card {
+            background: rgba(255,255,255,0.02);
+            border-left: 6px solid #fff;
+            padding: 20px;
+            border-radius: 0 8px 8px 0;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .weapon-card.katana { border-left-color: #ff416c; }
+        .weapon-card.taiken { border-left-color: #ffaa00; }
+        .weapon-card.saber { border-left-color: #00f2fe; }
+        .weapon-name { font-weight: 900; font-size: 1.3rem; margin-bottom: 5px; }
+        .weapon-desc { font-size: 0.95rem; color: #b5c2d5; line-height: 1.5; }
+
+        .selection-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 430px; /* 中央のWebカメラモニター用にマージンを広く確保 */
+            width: 100%;
+            max-width: 1300px;
+            margin-bottom: 10px;
+        }
+        .selection-panel {
+            background: linear-gradient(180deg, rgba(5, 12, 23, 0.95) 0%, rgba(8, 14, 26, 0.98) 100%);
+            border: 2px solid rgba(0, 242, 254, 0.2);
+            border-radius: 16px;
+            padding: 25px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.7);
+            z-index: 5;
+        }
+        .weapon-option {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            width: 100%;
+            padding: 15px 20px;
+            gap: 5px;
+            border: 2px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            background: rgba(255,255,255,0.02);
+            color: white;
+            cursor: pointer;
+            transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+            text-align: left;
+            margin-bottom: 12px;
+        }
+        .weapon-option:hover {
+            transform: translateY(-2px);
+            border-color: rgba(0, 242, 254, 0.3);
+        }
+        .weapon-option.selected {
+            border-color: #00f2fe;
+            box-shadow: 0 0 20px rgba(0, 242, 254, 0.35);
+            background: rgba(0, 242, 254, 0.08);
+        }
+        .weapon-option.katana { border-left: 6px solid #ff416c; }
+        .weapon-option.taiken { border-left: 6px solid #ffaa00; }
+        .weapon-option.saber { border-left: 6px solid #00f2fe; }
+        .selection-footer {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            width: 100%;
+            max-width: 1200px;
+            margin-top: 10px;
+            z-index: 6;
+        }
+        .weapon-summary {
+            font-size: 1.1rem;
+            color: #cbd7f5;
+            background: rgba(255,255,255,0.04);
+            padding: 12px 24px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.06);
+            margin: 5px 0 0 0;
+        }
+
+        .weapon-preview {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 20px;
+        }
+        .preview-item {
+            padding: 14px 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.03);
+            color: #dce8ff;
+            font-size: 1rem;
+            min-width: 180px;
+            text-align: center;
+        }
+        .preview-item.p1 { border-color: #ff416c; }
+        .preview-item.p2 { border-color: #00f2fe; }
+
+        .start-panel {
+            width: 100%;
+            max-width: 900px;
+            padding: 50px 40px;
+            border-radius: 20px;
+            background: rgba(255,255,255,0.04);
+            border: 2px solid rgba(0, 242, 254, 0.2);
+            box-shadow: 0 25px 70px rgba(0, 0, 0, 0.6);
+            text-align: center;
+        }
+        .start-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 4rem;
+            letter-spacing: 0.2em;
+            margin-bottom: 10px;
+            color: #00f2fe;
+            text-shadow: 0 0 25px rgba(0, 242, 254, 0.4);
+        }
+        .start-subtitle {
+            font-size: 1.4rem;
+            color: #cbd7f5;
+            margin-bottom: 35px;
+            letter-spacing: 0.2em;
+        }
+        .start-copy {
+            font-size: 1rem;
+            color: #e5f5ff;
+            margin-bottom: 35px;
+            line-height: 1.8;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-top: 15px;
+        }
+        .btn {
+            padding: 12px 30px;
+            font-size: 1rem;
+            font-weight: bold;
+            border: 2px solid;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .btn-primary { background-color: #00f2fe; color: black; border-color: #00a2ff; }
+        .btn-primary:hover { box-shadow: 0 0 20px rgba(0, 242, 254, 0.5); transform: scale(1.05); }
+
+        .subtitle {
+            font-size: 1.2rem;
+            color: #00f2fe;
+            letter-spacing: 8px;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            text-shadow: 0 0 10px rgba(0, 242, 254, 0.6);
+            border-bottom: 2px solid rgba(0, 242, 254, 0.3);
+            padding-bottom: 5px;
+            text-align: center;
+        }
+
+        .scoreboard {
+            background: linear-gradient(180deg, rgba(16, 23, 37, 0.9) 0%, rgba(8, 12, 21, 0.95) 100%);
+            border: 2px solid #324665;
+            padding: 20px 60px;
+            border-radius: 12px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8), inset 0 0 20px rgba(0, 242, 254, 0.1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 450px; /* 中央のWebカメラモニター用にマージンを広く確保 */
+            z-index: 5;
+            position: relative;
+            border-top: 4px solid #00f2fe;
+            min-width: 1000px;
+            margin-top: -20px;
+        }
+
+        .team-label {
+            font-size: 1rem;
+            letter-spacing: 2px;
+            color: #aaa;
+            position: absolute;
+            top: 12px;
+        }
+        .label-p1 { left: 40px; color: #ff416c; }
+        .label-p2 { right: 40px; color: #00f2fe; }
+
+        .score-num {
+            font-size: 6rem;
+            font-weight: bold;
+            font-family: 'Impact', sans-serif;
+            transition: transform 0.1s ease;
+            display: inline-block;
+        }
+
+        #p1Score { color: #ff416c; text-shadow: 0 0 30px rgba(255, 65, 108, 0.8); }
+        #p2Score { color: #00f2fe; text-shadow: 0 0 30px rgba(0, 242, 254, 0.8); }
+
+        .vs-text {
+            color: #4f678c;
+            font-size: 2.5rem;
+            font-style: italic;
+            border: 1px solid #324665;
+            padding: 5px 15px;
+            background: rgba(0,0,0,0.4);
+            transform: skewX(-15deg);
+        }
+
+        .bump { transform: scale(1.25) rotate(3deg); }
+        .flash-p1 { background-color: rgba(255, 0, 60, 0.25) !important; }
+        .flash-p2 { background-color: rgba(0, 162, 255, 0.25) !important; }
+
+        .slash-line {
+            position: absolute;
+            top: 50%;
+            left: -10%;
+            width: 120%;
+            height: 0;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 10;
+            transform-origin: center;
+        }
+
+        .line-p1 {
+            background: linear-gradient(90deg, transparent, #fff 40%, #ff416c 60%, transparent);
+            box-shadow: 0 0 50px #ff003c, 0 0 20px #fff;
+            transform: translateY(-50%) rotate(-12deg);
+        }
+
+        .line-p2 {
+            background: linear-gradient(90deg, transparent, #fff 40%, #00f2fe 60%, transparent);
+            box-shadow: 0 0 50px #00a2ff, 0 0 20px #fff;
+            transform: translateY(-50%) rotate(12deg);
+        }
+
+        .swipe-animation {
+            animation: slashSwipe 0.2s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
+        }
+
+        @keyframes slashSwipe {
+            0% { height: 0; opacity: 0; clip-path: inset(0 100% 0 0); }
+            20% { height: 25px; opacity: 1; }
+            40% { clip-path: inset(0 0 0 0); }
+            100% { height: 0; opacity: 0; clip-path: inset(0 0 0 100%); }
+        }
+
+        .slash-text {
+            position: absolute;
+            top: 30%;
+            font-size: 10rem;
+            color: #fff;
+            font-style: italic;
+            transform: translate(-50%, -50%) scale(0);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 11;
+        }
+        .text-p1 {
+            left: 20%;
+            text-shadow: 0 0 40px #ff003c, 0 0 60px #ff416c;
+        }
+        .text-p2 {
+            left: 69%;
+            text-shadow: 0 0 40px #00a2ff, 0 0 60px #00f2fe;
+        }
+
+        .pop-animation {
+            animation: slashPop 0.4s ease-out forwards;
+        }
+
+        @keyframes slashPop {
+            0% { transform: scale(0) rotate(-15deg); opacity: 0; }
+            20% { transform: scale(1.3) rotate(5deg); opacity: 1; }
+            80% { transform: scale(1.1) rotate(0deg); opacity: 1; }
+            100% { transform: scale(1.5); opacity: 0; }
+        }
+
+        /* --- 💻 Webカメラ・モニター共通レイアウト --- */
+        .monitor-wrapper {
+            position: absolute;
+            top: 52%;
+            left: 50%;
+            transform: translate(-50%, -50%) translateZ(20px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 440px;
+            gap: 15px;
+            z-index: 50;
+            pointer-events: none; /* 下のボタンをクリックできるように */
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+
+        .monitor-border {
+            position: relative;
+            width: 400px;
+            height: 300px;
+            border-radius: 20px;
+            padding: 5px;
+            background: linear-gradient(135deg, var(--neon-cyan) 0%, var(--neon-magenta) 100%);
+            box-shadow: 0 0 40px rgba(0, 242, 254, 0.25);
+            overflow: hidden;
+        }
+
+        .monitor-border::before {
+            content: '';
+            position: absolute;
+            inset: 2px;
+            background: #08070e;
+            border-radius: 18px;
+            z-index: 1;
+        }
+
+        #webcam {
+            position: relative;
+            z-index: 2;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 16px;
+            display: block;
+            transform: scaleX(-1); /* ミラー表示 */
+        }
+
+        #output_canvas {
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            width: calc(100% - 10px);
+            height: calc(100% - 10px);
+            z-index: 999;
+            pointer-events: none;
+            border-radius: 16px;
+            transform: translateZ(10px);
+            will-change: transform;
+        }
+
+        .timer-box-horizontal {
+            background: rgba(16, 23, 37, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 240px;
+            padding: 8px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+        }
+
+        .timer-num {
+            font-size: 2rem;
+            font-weight: 800;
+            color: var(--neon-yellow);
+            text-shadow: 0 0 20px rgba(255, 221, 89, 0.4);
+            font-family: 'Space Grotesk', sans-serif;
+            line-height: 1;
+        }
+
+        .timer-label {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            color: #aaa;
+            letter-spacing: 2px;
+        }
+
+        /* --- 🛡️ カメラ警告 ＆ 起動オーバーレイ --- */
+        .camera-warning {
+            background: rgba(231, 76, 60, 0.2);
+            border: 1px solid #e74c3c;
+            color: #ff7675;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            margin: 15px auto 5px;
+            max-width: 650px;
+            text-align: center;
+            font-weight: bold;
+            z-index: 50;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 15px rgba(231, 76, 60, 0.15);
+            border-left: 5px solid #e74c3c;
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            pointer-events: none;
+        }
+
+        .setup-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(11, 14, 20, 0.98);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            transition: opacity 0.5s ease;
+        }
+
+        .setup-card {
+            max-width: 500px;
+            width: 90%;
+            background: linear-gradient(180deg, rgba(16, 23, 37, 0.95) 0%, rgba(8, 12, 21, 0.98) 100%);
+            border: 2px solid rgba(0, 242, 254, 0.3);
+            padding: 40px;
+            border-radius: 28px;
+            text-align: center;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(20px);
+        }
+
+        .setup-card h2 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2rem;
+            margin-bottom: 15px;
+            font-weight: 900;
+            color: #00f2fe;
+            letter-spacing: 2px;
+        }
+
+        .setup-card p {
+            color: #cbd7f5;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+
+        .start-btn {
+            background: linear-gradient(135deg, var(--neon-cyan) 0%, #0099ff 100%);
+            color: #000000;
+            border: none;
+            padding: 16px 36px;
+            font-size: 1.1rem;
+            font-weight: 800;
+            border-radius: 50px;
+            cursor: pointer;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            transition: all 0.2s;
+            box-shadow: 0 0 30px rgba(0, 242, 254, 0.3);
+        }
+
+        .start-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 40px rgba(0, 242, 254, 0.5);
+        }
+
+        .setup-status {
+            margin-top: 20px;
+            font-size: 0.85rem;
+            color: #aaa;
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        /* 共通ヘッダー */
+        header {
+            text-align: center;
+            padding: 20px 20px 5px;
+            z-index: 10;
+        }
+
+        .game-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2.2rem;
+            font-weight: 900;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            background: linear-gradient(to right, var(--neon-cyan), #ffffff, var(--neon-magenta));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 30px rgba(0, 242, 254, 0.2);
+            margin: 0;
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 6px 16px;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            color: #aaa;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: #ff5e57;
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 10px #ff5e57;
+        }
+
+        .status-dot.active {
+            background: #2ecc71;
+            box-shadow: 0 0 10px #2ecc71;
+            animation: pulseDot 1.5s infinite;
+        }
+
+        @keyframes pulseDot {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.3); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        footer {
+            text-align: center;
+            padding: 10px 20px 20px;
+            z-index: 10;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
 </head>
-<body>
+<body onclick="unlockAudio()">
 
-  <!-- Camera Auth State & Start Battle Button Overlay -->
-  <div id="setup-overlay" class="setup-overlay">
-    <div class="setup-card">
-      <h2 class="game-title">SHINGEKI NO SHINKEN</h2>
-      <p class="subtitle">MultiPose Battle System</p>
-      <p>
-        本システムはWebカメラを用いて全身骨格をリアルタイムに検知し、バトルを行います。<br><br>
-        「カメラの開始」ボタンを押してカメラの利用を許可してください。画面に描画される骨格線（ワイヤーフレーム）を目視して動作をデバッグできます。
-      </p>
-      <button id="start-btn" class="start-btn">カメラの開始（許可）</button>
-      <div id="setup-status" class="setup-status">検出器の初期化待ち...</div>
-    </div>
-  </div>
+    <!-- Audio Activation Notice Overlay -->
+    <div id="audioNotice">📢 【SYSTEM】 最初に画面をクリックしてアクティベート</div>
 
-  <!-- Header Section -->
-  <header>
-    <h1 class="game-title">SHINGEKI NO SHINKEN</h1>
-    <div id="game-phase-title" class="subtitle">フェーズ：武器選択中</div>
-  </header>
-  
-  <!-- 💡 カメラ画角の警告メッセージ表示エリア (1回生のUIを邪魔しないヘッダー直下) -->
-  <div class="camera-warning">
-    ⚠️【重要】骨格が消える場合は、Macの画面を少し手前に傾けて、胸とお腹が画面に入るようにしてください！
-  </div>
-
-  <!-- Main Game Dashboard -->
-  <main class="battle-container">
-    
-    <!-- Player 1 (Left Area Swing Detection) -->
-    <div id="p1-card" class="player-card p1">
-      <div class="slash-effect" id="p1-flash"></div>
-      <div class="player-badge">PLAYER 1</div>
-      <h2 class="player-name">青き神剣 (LEFT)</h2>
-      
-      <!-- Weapon Registration Debbuging UI -->
-      <div class="reg-box">
-        <div class="reg-label">武器選択＆抜刀ステータス</div>
-        <div id="p1-reg-status" class="reg-status">骨格検出待ち...</div>
-      </div>
-
-      <div class="score-wrapper">
-        <div id="p1-score" class="score-num">0</div>
-      </div>
-      <div class="score-label">斬撃カウント (SLASHS)</div>
+    <!-- Camera Auth State & Start Battle Button Overlay -->
+    <div id="setup-overlay" class="setup-overlay">
+        <div class="setup-card">
+            <h2>SHINGEKI NO SHINKEN</h2>
+            <p>
+                本システムはWebカメラを用いて全身骨格をリアルタイムに検知し、バトルを行います。<br><br>
+                「カメラの開始」ボタンを押してカメラの利用を許可してください。画面に描画される骨格線（ワイヤーフレーム）を目視して動作をデバッグできます。
+            </p>
+            <button id="start-btn" class="start-btn">カメラの開始（許可）</button>
+            <div id="setup-status" class="setup-status">検出器の初期化待ち...</div>
+        </div>
     </div>
 
-    <!-- Center Control (Live Visualizer Monitor) -->
-    <div class="monitor-wrapper">
-      <div class="monitor-border">
-        <!-- ビデオ要素を display: block で明示 -->
-        <video id="webcam" autoplay playsinline width="400" height="300" style="display: block;"></video>
-        <!-- キャンバスIDを output_canvas に統一 -->
-        <canvas id="output_canvas" width="400" height="300"></canvas>
-      </div>
-      <div class="timer-box-horizontal">
-        <div class="timer-label">残り時間</div>
-        <div id="game-timer" class="timer-num">90</div>
-      </div>
-      <div class="vs-badge">V S</div>
+    <!-- 💡 カメラ画角の警告メッセージ表示エリア -->
+    <div class="camera-warning">
+        ⚠️【重要】骨格が消える場合は、Macの画面を少し手前に傾けて、胸とお腹が画面に入るようにしてください！
     </div>
 
-    <!-- Player 2 (Right Area Swing Detection) -->
-    <div id="p2-card" class="player-card p2">
-      <div class="slash-effect" id="p2-flash"></div>
-      <div class="player-badge">PLAYER 2</div>
-      <h2 class="player-name">紅き神剣 (RIGHT)</h2>
-      
-      <!-- Weapon Registration Debbuging UI -->
-      <div class="reg-box">
-        <div class="reg-label">武器選択＆抜刀ステータス</div>
-        <div id="p2-reg-status" class="reg-status">骨格検出待ち...</div>
-      </div>
+    <!-- Header Section -->
+    <header>
+        <h1 class="game-title">SHINGEKI NO SHINKEN</h1>
+        <div id="game-phase-title" class="subtitle" style="margin-top: 5px;">フェーズ：武器選択中</div>
+    </header>
 
-      <div class="score-wrapper">
-        <div id="p2-score" class="score-num">0</div>
-      </div>
-      <div class="score-label">斬撃カウント (SLASHS)</div>
+    <div class="main-content">
+        <!-- ── 💻 共用Webカメラ・モニター（selecting/drawing/playingフェーズ時に中央に自動浮遊） ── -->
+        <div class="monitor-wrapper hidden">
+            <div class="monitor-border">
+                <video id="webcam" autoplay playsinline width="400" height="300"></video>
+                <canvas id="output_canvas" width="400" height="300"></canvas>
+            </div>
+            <div class="timer-box-horizontal">
+                <div class="timer-label">残り時間</div>
+                <div id="game-timer" class="timer-num">90</div>
+            </div>
+        </div>
+
+        <!-- 1. スタート画面 -->
+        <div id="startScreen" class="screen active">
+            <div class="start-panel">
+                <div class="start-title">SHINGEKI NO SHINKEN</div>
+                <div class="start-subtitle">Cyber Skeleton Battle</div>
+                <div class="start-copy">
+                    ルール説明の前に、まずは構えを整えよう。<br>
+                    Webカメラの前に立って構えをとることで、瞬時に武器がロックオンされます。<br>
+                    武器を選び、最初の一撃へと進みましょう。
+                </div>
+                <div class="nav-buttons">
+                    <button class="btn btn-primary" onclick="switchScreen('guideScreen')">説明を見る</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. ゲーム説明画面 -->
+        <div id="guideScreen" class="screen">
+            <div class="guide-grid">
+                <div class="panel">
+                    <div class="panel-title">ゲームルール <span>RULES</span></div>
+                    <div class="rule-box">
+                        <h4>🎯 目的</h4>
+                        <p>カメラの前で構えを取って武器を選択し、スマホを使って斬撃を競い合います。</p>
+                    </div>
+                    <div class="rule-box">
+                        <h4>⚔️ 構えと武器</h4>
+                        <p>
+                            **大剣 (赤)**: 手を肩より上に掲げる。<br>
+                            **刀 (青)**: 肘を130度以下に曲げて腰に手を添える。<br>
+                            **光剣 (黄)**: 両手を中心で合わせる。
+                        </p>
+                    </div>
+                    <div class="rule-box">
+                        <h4>📊 バトル</h4>
+                        <p>全員抜刀完了後、手を上から下に高速スイングして、斬撃を叩き込め！</p>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-title">武器情報 <span>WEAPONS</span></div>
+                    <div class="weapon-list">
+                        <div class="weapon-card katana">
+                            <div class="weapon-name">🗡️ 刀（かたな）</div>
+                            <div class="weapon-desc">素早く斬る攻撃。バランスの取れた性能。</div>
+                        </div>
+                        <div class="weapon-card taiken">
+                            <div class="weapon-name">🪓 大剣（たいけん）</div>
+                            <div class="weapon-desc">重く強い一撃。力強い効果音が特徴。</div>
+                        </div>
+                        <div class="weapon-card saber">
+                            <div class="weapon-name">⚡ 光剣（こうけん）</div>
+                            <div class="weapon-desc">未来的な武器。電子音が鳴り響く。</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="nav-buttons">
+                <!-- 💡 このボタンクリックで武器選択画面へ切り替え ＆ モニター起動 -->
+                <button class="btn btn-primary" onclick="switchScreen('selectionScreen')">対戦開始 →</button>
+            </div>
+        </div>
+
+        <!-- 3. 武器選択画面 -->
+        <div id="selectionScreen" class="screen">
+            <div class="subtitle">WEAPON SELECT</div>
+            <div class="selection-grid">
+                <!-- PLAYER 1 Panel -->
+                <div class="selection-panel" id="p1-card">
+                    <div class="panel-title" style="color: #ff416c; border-color: rgba(255, 65, 108, 0.3);">PLAYER 1 <span>SELECT</span></div>
+                    <div class="reg-box">
+                        <div class="reg-label">武器選択＆抜刀ステータス</div>
+                        <div id="p1-reg-status" class="reg-status" style="color: #ff416c;">骨格検出待ち...</div>
+                    </div>
+                    <div class="weapon-list">
+                        <button id="p1-katana" class="weapon-option katana">
+                            <div class="weapon-name">🗡️ 刀</div>
+                            <div class="weapon-desc">軽快でバランスの良い選択。</div>
+                        </button>
+                        <button id="p1-taiken" class="weapon-option taiken">
+                            <div class="weapon-name">🪓 大剣</div>
+                            <div class="weapon-desc">重厚な一撃で存在感抜群。</div>
+                        </button>
+                        <button id="p1-sabers" class="weapon-option saber">
+                            <div class="weapon-name">⚡ 光剣</div>
+                            <div class="weapon-desc">未来的なサウンドで攻撃。</div>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- PLAYER 2 Panel -->
+                <div class="selection-panel" id="p2-card">
+                    <div class="panel-title" style="color: #00f2fe; border-color: rgba(0, 242, 254, 0.3);">PLAYER 2 <span>SELECT</span></div>
+                    <div class="reg-box">
+                        <div class="reg-label">武器選択＆抜刀ステータス</div>
+                        <div id="p2-reg-status" class="reg-status" style="color: #00f2fe;">骨格検出待ち...</div>
+                    </div>
+                    <div class="weapon-list">
+                        <button id="p2-katana" class="weapon-option katana">
+                            <div class="weapon-name">🗡️ 刀</div>
+                            <div class="weapon-desc">軽快でバランスの良い選択。</div>
+                        </button>
+                        <button id="p2-taiken" class="weapon-option taiken">
+                            <div class="weapon-name">🪓 大剣</div>
+                            <div class="weapon-desc">重厚な一撃で存在感抜群。</div>
+                        </button>
+                        <button id="p2-sabers" class="weapon-option saber">
+                            <div class="weapon-name">⚡ 光剣</div>
+                            <div class="weapon-desc">未来的なサウンドで攻撃。</div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="selection-footer">
+                <p class="weapon-summary">PLAYER 1: <span id="previewP1">選択中...</span> / PLAYER 2: <span id="previewP2">選択中...</span></p>
+            </div>
+        </div>
+
+        <!-- 4. バトルステージ画面 -->
+        <div id="battleScreen" class="screen">
+            <div class="subtitle" id="battleStageSubtitle">BATTLE STAGE</div>
+            <div class="scoreboard">
+                <div class="team-label label-p1">PLAYER 1</div>
+                <span id="p1Score" class="score-num">0</span>
+                <span class="vs-text">VS</span>
+                <span id="p2Score" class="score-num">0</span>
+                <div class="team-label label-p2">PLAYER 2</div>
+            </div>
+            
+            <div class="weapon-preview">
+                <div class="preview-item p1">P1 武器: <span id="battleWeaponP1">未確定</span></div>
+                <div class="preview-item p2">P2 武器: <span id="battleWeaponP2">未確定</span></div>
+            </div>
+
+            <!-- フルスクリーンの斬撃閃光エフェクト要素 -->
+            <div id="slashLine" class="slash-line"></div>
+            <div id="slashText" class="slash-text">斬！</div>
+        </div>
     </div>
 
-  </main>
+    <!-- Footer Info & Tracking Status Indicator -->
+    <footer>
+        <div class="status-indicator">
+            <span id="status-dot" class="status-dot"></span>
+            <span id="status-text">モーション検出オフライントラッキング</span>
+        </div>
+    </footer>
 
-  <!-- Footer Info & Tracking Status Indicator -->
-  <footer>
-    <div class="status-indicator">
-      <span id="status-dot" class="status-dot"></span>
-      <span id="status-text">モーション検出オフライントラッキング</span>
-    </div>
-  </footer>
-
-  <!-- JavaScript module connection -->
-  <script type="module" src="script.js?v=20260531_01"></script>
+    <!-- JavaScript module connection (キャッシュバスター付き) -->
+    <script type="module" src="script.js?v=20260531_02"></script>
 </body>
 </html>

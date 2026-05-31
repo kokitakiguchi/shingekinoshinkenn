@@ -66,6 +66,11 @@ final class FirestoreEventSender: ObservableObject {
                 return "送信失敗: \(detail)"
             }
         }
+
+        var isSuccess: Bool {
+            if case .sent = self { return true }
+            return false
+        }
     }
 
     @Published private(set) var state: State = .idle
@@ -76,6 +81,52 @@ final class FirestoreEventSender: ObservableObject {
 
     func sendDrawComplete(weapon: WeaponType) async {
         await send(.drawn(weapon: weapon))
+    }
+
+    // MARK: - 本番コレクション（shinken_rooms/battle）への書き込み
+
+    /// 抜刀完了を本番 Firestore に送信する。
+    /// `shinken_rooms/battle` の `p{playerNumber}_vibrate` を true にする。
+    func sendVibrate(playerNumber: Int) async {
+        state = .sending
+        do {
+            let config = try FirestoreConfig.load()
+            let fieldName = "p\(playerNumber)_vibrate"
+            try await patchBattleField(config: config, fieldName: fieldName, boolValue: true)
+            state = .sent("shinken_rooms/battle \(fieldName)=true")
+        } catch {
+            state = .failed(error.localizedDescription)
+        }
+    }
+
+    private func patchBattleField(config: FirestoreConfig, fieldName: String, boolValue: Bool) async throws {
+        let baseURL = "https://firestore.googleapis.com/v1/projects/\(config.projectId)"
+            + "/databases/(default)/documents/shinken_rooms/battle"
+        guard var components = URLComponents(string: baseURL) else {
+            throw FirestoreEventError.invalidURL
+        }
+        components.queryItems = [
+            URLQueryItem(name: "key", value: config.apiKey),
+            URLQueryItem(name: "updateMask.fieldPaths", value: fieldName)
+        ]
+        guard let url = components.url else { throw FirestoreEventError.invalidURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "fields": [fieldName: ["booleanValue": boolValue]]
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw FirestoreEventError.invalidResponse
+        }
+        guard 200..<300 ~= http.statusCode else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw FirestoreEventError.server(statusCode: http.statusCode, body: body)
+        }
     }
 
     private func send(_ event: Event) async {

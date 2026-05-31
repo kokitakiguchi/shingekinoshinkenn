@@ -11,7 +11,7 @@ import SwiftUI
 struct shingekinoshinkennApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            PlayerSelectView()
         }
     }
 }

@@ -498,10 +498,10 @@ async function startMatch() {
     await setDoc(battleDocRef, {
       status: "playing",
       match_status: "playing",
-      player1_score: 0,
-      player2_score: 0,
-      player1_weapon: selectionState.player1.selectedWeapon,
-      player2_weapon: selectionState.player2.selectedWeapon,
+      p1_score: 0,
+      p2_score: 0,
+      p1_weapon: selectionState.player1.selectedWeapon,
+      p2_weapon: selectionState.player2.selectedWeapon,
       p1_vibrate: false,
       p2_vibrate: false
     }, { merge: true });
@@ -556,7 +556,7 @@ async function handleSwing(playerKey) {
 
     const battleDocRef = doc(db, "shinken_rooms", "battle");
     await setDoc(battleDocRef, {
-      [`${playerKey === 'player1' ? 'player1_score' : 'player2_score'}`]: increment(1)
+      [`${playerKey === 'player1' ? 'p1_score' : 'p2_score'}`]: increment(1)
     }, { merge: true });
   } catch (e) {
     console.error("Firestoreスコア送信エラー:", e);
@@ -797,8 +797,10 @@ async function checkAllWeaponsSelected() {
           p1_weapon: selectionState.player1.selectedWeapon,
           p2_weapon: selectionState.player2.selectedWeapon,
           p1_ready: false,
-          p2_ready: false
-        }, { merge: true });
+          p2_ready: false,
+          p1_score: 0,
+          p2_score: 0
+        }); // merge: true を削除してデータベース上のゴミデータを毎回完全上書き消去！
       }, 1500);
     }
   } catch (e) {
@@ -1124,8 +1126,8 @@ async function initPoseBattleSystem() {
       match_status: "selecting",
       p1_ready: false,
       p2_ready: false,
-      player1_score: 0,
-      player2_score: 0
+      p1_score: 0,
+      p2_score: 0
     }, { merge: true });
 
     setupFirestoreListener();
@@ -1313,8 +1315,8 @@ async function resetToHome() {
       match_status: "selecting",
       p1_ready: false,
       p2_ready: false,
-      player1_score: 0,
-      player2_score: 0,
+      p1_score: 0,
+      p2_score: 0,
       winner: ""
     }, { merge: true });
   } catch (e) {
@@ -1672,8 +1674,8 @@ function setupFirestoreListener() {
         }
 
         // スコア同期時の演出＆重複防止ロジック
-        if (data.player1_score !== undefined && data.player1_score !== p1Score && gameStatus === "playing") {
-          p1Score = data.player1_score;
+        if (data.p1_score !== undefined && data.p1_score !== p1Score && gameStatus === "playing") {
+          p1Score = data.p1_score;
           p1ScoreEl.textContent = p1Score;
           updateP1HealthGauge(p1Score);
 
@@ -1689,8 +1691,8 @@ function setupFirestoreListener() {
           }
         }
 
-        if (data.player2_score !== undefined && data.player2_score !== p2Score && gameStatus === "playing") {
-          p2Score = data.player2_score;
+        if (data.p2_score !== undefined && data.p2_score !== p2Score && gameStatus === "playing") {
+          p2Score = data.p2_score;
           p2ScoreEl.textContent = p2Score;
           updateP2HealthGauge(p2Score);
 

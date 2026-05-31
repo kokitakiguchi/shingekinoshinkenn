@@ -3,14 +3,18 @@
 //  shingekinoshinkenn
 //
 //  本番 Firestore ドキュメント（shinken_rooms/battle）を 1 秒間隔でポーリングし、
-//  p{n}_ready / p{n}_weapon の変化を MainActor 上で公開する。
+//  status / p{n}_weapon の変化を MainActor 上で公開する。
+//
+//  【実際のフロー】
+//    selecting: Web がポーズで武器選択（iOS は待機）
+//    drawing:   Web が p{n}_weapon を書き status="drawing" にする
+//               → iOS がこれを検知して抜刀待機を自動開始
+//               → 抜刀完了後、iOS が p{n}_ready=true を書く
+//    playing:   Web が p1_ready && p2_ready を確認してバトル開始
 //
 //  Firebase iOS SDK なしで動作する（URLSession + REST API）。
-//  ready の「false → true エッジ」だけを isReadyReceived で通知するので、
-//  ContentView は onChange で受け取って抜刀待機を開始できる。
 //
 
-import Combine
 import Foundation
 
 @MainActor
@@ -23,13 +27,17 @@ final class FirestoreListener: ObservableObject {
         didSet { resetState() }
     }
 
-    /// Web 側（はる）が p{n}_ready = true を書いた瞬間に true になる（エッジ検出）。
-    /// ContentView はこれをトリガに抜刀待機を開始する。
-    /// 一度発火したら false に戻す（再び ready になるまで再発火しない）。
-    @Published private(set) var isReadyReceived: Bool = false
+    /// status が "selecting" → "drawing" に変わった瞬間に true になる（エッジ検出）。
+    /// ContentView はこれをトリガに抜刀待機を自動開始する。
+    /// 消費したら consumeDrawingPhase() で false に戻す。
+    @Published private(set) var isDrawingPhaseStarted: Bool = false
 
-    /// Web 側が p{n}_weapon に書いた武器 ID。nil は未取得 or マッピング不明。
+    /// Web が drawing フェーズ開始時に p{n}_weapon へ書いた武器。
+    /// nil は未取得 or マッピング不明。
     @Published private(set) var weapon: WeaponType?
+
+    /// 現在のゲームフェーズ（"selecting" / "drawing" / "playing" / "finished"）。
+    @Published private(set) var gameStatus: String = ""
 
     /// ポーリングの状態を UI に表示するためのステータス文字列。
     @Published private(set) var connectionStatus: String = "未接続"
@@ -37,8 +45,7 @@ final class FirestoreListener: ObservableObject {
     // MARK: - 内部状態
 
     private var pollingTask: Task<Void, Never>?
-    /// 前フレームの p{n}_ready 値。エッジ検出に使う。
-    private var previousReady: Bool = false
+    private var previousStatus: String = ""
     private let pollInterval: UInt64 = 1_000_000_000 // 1 秒 (nanoseconds)
 
     // MARK: - 制御
@@ -60,15 +67,15 @@ final class FirestoreListener: ObservableObject {
         pollingTask = nil
     }
 
-    /// 「サーバから ready を受け取った」フラグをリセットする。
-    /// 抜刀完了後 or キャンセル後に呼ぶことで、次回の ready を受け付けられる。
-    func consumeReadyReceived() {
-        isReadyReceived = false
+    /// drawing フェーズ検知フラグを消費する。ContentView が onChange で呼ぶ。
+    func consumeDrawingPhase() {
+        isDrawingPhaseStarted = false
     }
 
     private func resetState() {
-        isReadyReceived = false
-        previousReady = false
+        isDrawingPhaseStarted = false
+        previousStatus = ""
+        gameStatus = ""
         weapon = nil
     }
 
@@ -95,22 +102,25 @@ final class FirestoreListener: ObservableObject {
     }
 
     private func apply(_ fields: [String: FirestoreFieldValue]) {
-        let readyKey = "p\(playerNumber)_ready"
         let weaponKey = "p\(playerNumber)_weapon"
 
-        // ready: false → true のエッジだけ通知
-        let currentReady = fields[readyKey]?.booleanValue ?? false
-        if currentReady && !previousReady {
-            isReadyReceived = true
+        // status: "selecting" → "drawing" のエッジを検知
+        let currentStatus = fields["status"]?.stringValue
+            ?? fields["match_status"]?.stringValue
+            ?? ""
+        if currentStatus == "drawing" && previousStatus != "drawing" {
+            isDrawingPhaseStarted = true
         }
-        previousReady = currentReady
+        previousStatus = currentStatus
+        gameStatus = currentStatus
 
-        // 武器：生文字列を WeaponType へマッピング
+        // 武器：drawing フェーズ移行時に Web が p{n}_weapon に書く
         if let weaponStr = fields[weaponKey]?.stringValue {
-            weapon = WeaponType(firestoreValue: weaponStr)
+            let mapped = WeaponType(firestoreValue: weaponStr)
+            if mapped != weapon { weapon = mapped }
         }
 
-        connectionStatus = "受信中 (\(readyKey): \(currentReady))"
+        connectionStatus = "受信中 (status: \(currentStatus))"
     }
 
     deinit {
@@ -121,7 +131,6 @@ final class FirestoreListener: ObservableObject {
 // MARK: - Firestore REST レスポンスの最小デコード型
 
 private struct FirestoreDocumentResponse: Decodable {
-    /// ドキュメントが存在しない場合 fields がないケースに備え省略可能にする。
     let fields: [String: FirestoreFieldValue]
 
     init(from decoder: Decoder) throws {
@@ -135,7 +144,7 @@ private struct FirestoreDocumentResponse: Decodable {
 private struct FirestoreFieldValue: Decodable {
     let booleanValue: Bool?
     let stringValue: String?
-    let integerValue: String? // Firestore は整数を文字列で返す
+    let integerValue: String?
 
     private enum CodingKeys: String, CodingKey {
         case booleanValue, stringValue, integerValue
@@ -152,18 +161,17 @@ private struct FirestoreFieldValue: Decodable {
 
 extension WeaponType {
     /// Firestore の p{n}_weapon 文字列から WeaponType を返す。
-    /// Web 側の rawValue（"lightsaber" / "greatsword" / "smallsword"）と
-    /// 旧 web キー（"katana" / "taiken" / "sabers"）の両方を受け付ける。
+    /// Web 側は "sword" / "greatsword" / "lightsaber" を使う（selectionState のキー）。
+    /// 旧キー（"katana" / "taiken" / "sabers"）も互換で受け付ける。
     init?(firestoreValue: String) {
         switch firestoreValue {
-        case "lightsaber", "katana", "sabers":
+        case "lightsaber", "sabers":
             self = .lightsaber
         case "greatsword", "taiken":
             self = .greatsword
-        case "smallsword", "sword":
+        case "sword", "smallsword", "katana":
             self = .smallsword
         default:
-            // WeaponType.rawValue と一致するか試みる（将来の拡張に備えて）
             if let w = WeaponType(rawValue: firestoreValue) { self = w } else { return nil }
         }
     }

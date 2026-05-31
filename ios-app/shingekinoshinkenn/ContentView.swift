@@ -83,10 +83,16 @@ struct ContentView: View {
                 cancelDrawWaiting()
             }
         }
-        // Web（はる）が p{n}_ready = true を書いたら抜刀待機を自動開始する。
-        .onChange(of: listener.isReadyReceived) { _, received in
-            guard received, !isAwaitingDraw, haptics.equippedWeapon != nil else { return }
-            listener.consumeReadyReceived()
+        // Web が status="drawing" にしたら抜刀待機を自動開始する。
+        // このタイミングで p{n}_weapon も更新されているため、武器の同期も先に行う。
+        .onChange(of: listener.isDrawingPhaseStarted) { _, started in
+            guard started, haptics.equippedWeapon != nil else { return }
+            listener.consumeDrawingPhase()
+            // weapon が同時に届いていれば先に同期
+            if let w = listener.weapon, w != selectedWeapon {
+                selectedWeapon = w
+                haptics.equip(w) // 武器が変わったので装備し直し
+            }
             beginDrawWaiting()
         }
         // Web が p{n}_weapon を更新したら武器を同期する。
@@ -188,12 +194,16 @@ struct ContentView: View {
                     drawCompletedBanner(distance: dist)
                 }
             } else {
-                // 構えて Web の ready 待ち中
-                Label("Web の構え完了（p\(playerNumber)_ready）を待機中...",
-                      systemImage: "antenna.radiowaves.left.and.right")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+                // 構えて Web の drawing フェーズ待ち中
+                VStack(spacing: 4) {
+                    Label("Web の武器選択完了を待機中...",
+                          systemImage: "antenna.radiowaves.left.and.right")
+                    Text("（Web 側で両者の武器が確定すると自動で抜刀待機が始まります）")
+                        .font(.caption2)
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
             }
         }
         .animation(.spring(response: 0.45, dampingFraction: 0.7), value: lastDrawnDistance != nil)
@@ -317,9 +327,10 @@ struct ContentView: View {
         isAwaitingDraw = false
         lastDrawnDistance = displacement
 
-        // 本番コレクション（shinken_rooms/battle）に p{n}_vibrate=true を送信
+        // shinken_rooms/battle の p{n}_ready=true を送信。
+        // Web はこれを onSnapshot で受け取り、両者揃ったらバトル開始する。
         Task {
-            await firestoreSender.sendVibrate(playerNumber: playerNumber)
+            await firestoreSender.sendDrawReady(playerNumber: playerNumber)
         }
     }
 }

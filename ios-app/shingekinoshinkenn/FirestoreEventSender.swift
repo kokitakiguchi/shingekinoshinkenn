@@ -86,12 +86,14 @@ final class FirestoreEventSender: ObservableObject {
     // MARK: - 本番コレクション（shinken_rooms/battle）への書き込み
 
     /// 抜刀完了を本番 Firestore に送信する。
-    /// `shinken_rooms/battle` の `p{playerNumber}_vibrate` を true にする。
-    func sendVibrate(playerNumber: Int) async {
+    /// `shinken_rooms/battle` の `p{playerNumber}_ready` を true にする。
+    /// Web 側（はる）はこのフィールドを onSnapshot で監視し、
+    /// p1_ready && p2_ready が揃ったらバトル開始を自動トリガーする。
+    func sendDrawReady(playerNumber: Int) async {
         state = .sending
         do {
             let config = try FirestoreConfig.load()
-            let fieldName = "p\(playerNumber)_vibrate"
+            let fieldName = "p\(playerNumber)_ready"
             try await patchBattleField(config: config, fieldName: fieldName, boolValue: true)
             state = .sent("shinken_rooms/battle \(fieldName)=true")
         } catch {

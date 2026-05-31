@@ -7,8 +7,9 @@
 - **フォルダ**：`ios-app/`
 - **ブランチ**：`feature/ios-setup`
 
-> 剣の選択は Web 側で行う。**構え完了の判定（`ready`）も Web 側（MediaPipe）が担当**する。
-> タッキーは抜刀を振動付きで実行し、完了（`drawn`）を Firestore に送信することに集中する。
+> 剣の選択・構え判定はすべて **Web 側（MediaPipe ポーズ検出）** が担当する。
+> タッキーは抜刀を振動付きで実行し、完了を `p{n}_ready=true` として Firestore に書く。
+> Web がこれを受け取って両者揃ったらバトル開始する。
 
 ---
 
@@ -38,11 +39,11 @@
 - [x] 剣選択は Web 側で行う方針に変更
 
 ### 連携（はると協働）
-- [x] ボタン押下で `matches/{matchId}` の `players.p1.drawn` を送る導線を追加（REST API 直叩き）
 - [x] Firebase との簡易連携テストで、データ送受信が動作することを確認
-- [ ] 自動検知（CoreMotion）と Firestore 送信の結線：抜刀判定が立ったら `sendDrawComplete` を自動で呼ぶ
-- [ ] はると組んで、抜刀検知 → `players/p1/drawn = true` の繋ぎ込みテスト
-- ※ `ready` の送信は **Web（はる）が担当**。iOS 側では実装しない。
+- [x] `FirestoreListener` で `shinken_rooms/battle` を 1 秒ポーリング（`status` / `p{n}_weapon` を監視）
+- [x] Web が `status="drawing"` にした瞬間を検知 → 自動で抜刀待機開始
+- [x] 抜刀完了時に `shinken_rooms/battle` の `p{n}_ready=true` を送信（`FirestoreEventSender.sendDrawReady`）
+- [ ] はると組んで、抜刀検知 → `p{n}_ready=true` → Web がバトル開始する end-to-end テスト
 
 ### 発表前タスク
 - [ ] 水木の正式フロントエンドコードと現状実装の統合を確認する
@@ -77,26 +78,52 @@
 - 抜刀完了の判定（鞘から引き抜く移動量・速度ベクトル）
 - そのあと SwiftUI の画面（スタート / 武器セレクト / 抜刀待機）に組み込み、はるの Firestore 連携と繋ぐ
 
-### Firestore 連携（REST 直叩き版）
+### Firestore 連携（本番実装）
 
-- `ContentView` に送信ボタンを実装済み。
-  - **「抜刀完了を送信」** → `FirestoreEventSender.sendDrawComplete(weapon:)`
-  - ~~「構え完了を送信」~~ → **構え判定は Web（はる）が担当**。iOS 側のボタン/実装は不要。
-- Firestore REST API (`PATCH /v1/projects/{projectId}/databases/(default)/documents/matches/{matchId}`) を叩いて `matches/{matchId}` のフィールドを更新する。
-- 剣選択は Web 側が担当する。iOS からの `weapon` 送信は暫定実装で、削除または無視する。
-- **iOS が送信するフィールド**（`{playerId}` は `FirestoreConfig.plist` の値）：
+**本番コレクション：`shinken_rooms/battle`（ドキュメント固定）**
 
-  | イベント | フィールド | 値 |
-  |---------|-----------|----|
-  | drawn   | `players.{playerId}.drawn`     | `true` |
-  |         | `players.{playerId}.drawnAt`   | ISO8601 文字列 |
+#### iOS が読むフィールド（`FirestoreListener` が 1 秒ポーリング）
 
-- `ready` / `readyAt` は **Web（はる）が書く**。iOS は担当しない。
-- Firebase SDK はまだ使わず、`URLSession` だけで動かす簡易版。
-- ローカルに `ios-app/shingekinoshinkenn/FirestoreConfig.plist` を作り、`FirestoreConfig.example.plist` と同じキーで実値を入れる（**Xcode の Target に追加して Copy Bundle Resources に入れる**。`FirestoreConfig.load()` は `Bundle.main` から読むため、含めないと常に `missingFile` になる）。
+| フィールド | 書く側 | iOS の使い方 |
+|-----------|--------|-------------|
+| `status` / `match_status` | Web | `"drawing"` になったら抜刀待機を自動開始 |
+| `p{n}_weapon` | Web（武器確定時） | 選択された武器を `selectedWeapon` に反映 |
+
+- Web 側は `"sword"` / `"greatsword"` / `"lightsaber"` の 3 種の文字列を使う（Web 内部の `selectionState` のキー）。
+- `FirestoreListener.WeaponType.init(firestoreValue:)` でこれを iOS の `WeaponType` にマッピングする。
+
+#### iOS が書くフィールド（`FirestoreEventSender.sendDrawReady` が PATCH）
+
+| タイミング | フィールド | 値 | Web の反応 |
+|-----------|-----------|----|-----------| 
+| 抜刀完了 | `p{n}_ready` | `true` | `onSnapshot` で受信し、`p1_ready && p2_ready` が揃ったらバトル開始 |
+
+- `n` はアプリ起動時に選択したプレイヤー番号（1 or 2）。
+- Web が `drawing` フェーズ移行時に `p1_ready: false, p2_ready: false` にリセットする。
+
+#### ゲームフロー（iOS 視点）
+
+```
+Web が status="selecting"（武器選択中、iOS は待機）
+  ↓
+Web が status="drawing" + p{n}_weapon を書く
+  ↓ （FirestoreListener が検知、1秒以内）
+iOS: 武器を p{n}_weapon に合わせて更新 + 抜刀待機自動開始
+  ↓
+プレイヤーが実際に抜刀（CoreMotion で移動量を積分）
+  ↓
+iOS: CoreHaptics で抜刀振動 + Firestore に p{n}_ready=true を PATCH
+  ↓
+Web: p1_ready && p2_ready を確認 → バトル開始（playing フェーズへ）
+```
+
+#### 注意事項
+
+- Firebase SDK はまだ使わず、`URLSession` だけで動かす簡易版（ポーリング間隔 1 秒）。
+- ローカルに `ios-app/shingekinoshinkenn/FirestoreConfig.plist` を作り、`FirestoreConfig.example.plist` と同じキーで実値を入れる（**Xcode の Target に追加して Copy Bundle Resources に入れる**。含めないと `missingFile` になる）。
 - `FirestoreConfig.plist` は `.gitignore` 対象。公開リポジトリには入れない。
 - Firestore ルールがテストモード等で未認証書き込みを許可していない場合は `HTTP 403` になる。
-- 次の段階：上記ボタンの呼び出し元を CoreMotion の検知ロジックに差し替え、抜刀の自動 `drawn` 送信に切り替える。
+- `matches/{matchId}` コレクションは通信確認テスト用の旧実装。本番は `shinken_rooms/battle` のみを使う。
 
 ### 2026-05-31 時点の共有状況
 

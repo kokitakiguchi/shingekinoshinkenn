@@ -33,7 +33,7 @@
    └──────────────────────────┘         └──────────────────────────┘
 ```
 
-- **書き込む人**：Web（武器選択・構え完了 ready・斬撃スコア・試合進行）／iPhone（抜刀完了 drawn）
+- **書き込む人**：Web（武器選択・status 遷移・斬撃スコア）／iPhone（抜刀完了 p{n}_ready=true）
 - **読む人**：PC 大画面（全状態を購読して描画）／必要なら iPhone UI も購読
 - 全員が同じ `matchId` を見ることで、1 つの試合状態を共有する。
 
@@ -48,52 +48,27 @@
 ```
 matches/{matchId}
 {
-  status:    "selecting" | "drawing" | "playing" | "finished",  // 試合フェーズ
-  startedAt: <timestamp>,
-  winner:    "p1" | "p2" | null,
+  status:         "selecting" | "drawing" | "playing" | "finished",
+  match_status:   （status と同値。冗長だが Web が両方書く）
 
-  players: {
-    p1: {
-      name:    "はる",
-      hp:      100,
-      score:   0,
-      weapon:  "katana" | "taiken" | "sabers",               // 選択中の武器（Web が書く）
-      drawn:   false,                                       // 抜刀が完了したか（iPhone が書く）
-      drawnAt: <ISO8601 string>,                            // 抜刀完了時刻（iPhone が書く）
-      ready:   false,                                       // 構え完了か（Web が書く）
-      readyAt: <ISO8601 string>                             // 構え完了時刻（Web が書く）
-    },
-    p2: {
-      name:    "タッキー",
-      hp:      100,
-      score:   0,
-      weapon:  "katana" | "taiken" | "sabers",
-      drawn:   false,
-      drawnAt: <ISO8601 string>,
-      ready:   false,
-      readyAt: <ISO8601 string>
-    }
-  }
+  // プレイヤーごとのフラット構造（ネストなし）
+  p1_weapon:      "sword" | "greatsword" | "lightsaber",  // Web が drawing 開始時に書く
+  p2_weapon:      "sword" | "greatsword" | "lightsaber",
+  p1_ready:       false,   // iOS が抜刀完了時に true にする
+  p2_ready:       false,   // iOS が抜刀完了時に true にする
+
+  player1_score:  0,       // Web がスイング検知のたびに increment(1)
+  player2_score:  0,
+  player1_weapon: "...",   // startMatch 時に selectionState から再書き込み（表示用）
+  player2_weapon: "...",
+  p1_vibrate:     false,   // startMatch 時に false リセット（現状未使用）
+  p2_vibrate:     false,
 }
 ```
 
-> 武器選択は **Web 側**で行い、プレイヤーごとに `players.pX.weapon` へ書く。試合単位の `weapon` は持たない。
-> **構え完了（`ready`）は Web が MediaPipe で判定して書く**。iPhone はその結果を読むだけ。
-> iOS は抜刀完了（CoreHaptics による振動演出＋`drawn` / `drawnAt` の送信）に集中する。
-
-### （任意）斬撃イベントのログ `matches/{matchId}/events`
-
-演出のトリガや判定の見直しに使いたければ、斬撃を 1 件ずつ残す。
-
-```
-matches/{matchId}/events/{eventId}
-{
-  player:    "p1" | "p2",
-  type:      "draw" | "slash",
-  power:     <number>,      // 振りの速度など
-  createdAt: <timestamp>
-}
-```
+> **武器選択は Web のみ**。MediaPipe でポーズを 1.5 秒キープして確定。両者確定後 `status="drawing"` に遷移し、`p{n}_weapon` を書く。
+> **iOS は `p{n}_ready` を true にするだけ**。構え判定・武器選択はいずれも Web が行う。
+> 武器の文字列値は Web 内部キー `"sword"` / `"greatsword"` / `"lightsaber"`。iOS は `WeaponType.init(firestoreValue:)` でマッピングする。
 
 ---
 
@@ -101,28 +76,25 @@ matches/{matchId}/events/{eventId}
 
 | フィールド | 書く人 | 読む人 | 意味 |
 |------------|--------|--------|------|
-| `players.pX.weapon` | Web（はる・みずき） | iOS / 大画面 | 選択中の武器 |
-| `players.pX.drawn` / `drawnAt` | iOS（タッキー） | Web / 大画面 | 抜刀完了（振動付き）／その時刻 |
-| `players.pX.ready` / `readyAt` | Web（はる）     | iOS / 大画面 | 構え完了（MediaPipe 判定）／その時刻 |
-| `players.pX.score` | PC カメラ（はる） | 大画面（みずき） | 斬撃の累計 |
-| `players.pX.hp` | バトルロジック（はる） | 大画面（みずき） | 残り HP |
-| `status` | 進行役（はる） | 全員 | 試合フェーズ |
-| `winner` | バトルロジック（はる） | 大画面（みずき） | 勝者 |
+| `status` / `match_status` | Web（はる） | iOS / 全員 | 試合フェーズ遷移 |
+| `p{n}_weapon` | Web（はる）drawing 開始時 | iOS / 大画面 | 確定した武器 |
+| `p{n}_ready` | **iOS（タッキー）** 抜刀完了時 | Web（バトル開始トリガー） | 抜刀完了フラグ |
+| `player{n}_score` | Web（はる）スイング検知時 | 大画面（みずき） | 斬撃の累計スコア |
+| `winner` | Web（バトルロジック） | 大画面（みずき） | 勝者 |
 
-> **原則：1 つのフィールドを書くのは 1 担当だけ。** 読むのは誰でも OK。
-> 現状はデモ優先で、iOS から Firestore REST API を直接叩く暫定実装がある。正式な責任分界では、Firestore 連携は はる と調整する。
-> こうしておくと「誰の更新で壊れたか」が一目で分かり、コンフリクトも論理的な競合も起きにくい。
+> **原則：1 つのフィールドを書くのは 1 担当だけ。**
+> iOS が書くのは `p{n}_ready` のみ。武器・スコア・フェーズはすべて Web が管理する。
 
 ---
 
 ## 試合フェーズ（status）の遷移
 
 ```
-selecting ──(Webで武器選択完了)──▶ drawing ──(両者 drawn かつ ready)──▶ playing ──(HP 0 / 時間切れ)──▶ finished
+selecting ──(両者の武器確定)──▶ drawing ──(p1_ready && p2_ready)──▶ playing ──(90秒 or HP 0)──▶ finished
 ```
 
-- `selecting`：Web 側でプレイヤーの武器を選ぶ
-- `drawing`：iOS の抜刀完了（`drawn`）と Web の構え完了判定（`ready`）を両方待つ
+- `selecting`：Web 側でプレイヤーがポーズをキープして武器を選ぶ（iOS は構える＋待機）
+- `drawing`：Web が `p{n}_weapon` を書き iOS に通知。iOS が抜刀して `p{n}_ready=true` を送る
 - `playing`：斬撃の判定中。スコア／HP が動く
 - `finished`：勝敗確定。`winner` を表示
 
@@ -133,10 +105,10 @@ selecting ──(Webで武器選択完了)──▶ drawing ──(両者 drawn 
 繋ぎ込みは **小さく 1 往復** から。いきなり全機能を繋がない。
 
 1. **Web**：武器選択で `matches/test/players/p1/weapon` を更新できる。
-2. **タッキー**：iOS のボタン送信で `matches/test/players/p1/drawn` を更新できる。
-3. **はる**：MediaPipe で構え姿勢を検知し `matches/test/players/p1/ready` を更新できる。
-4. **みずき**：大画面（Web）でそのフィールドを購読し、準備状態と武器選択がバトル画面に反映される。
-5. **はる**：PC カメラの斬撃検知で `players/p1/score` を `+1` できる。
+2. **タッキー**：iOS で実際に抜刀して `shinken_rooms/battle` の `p1_ready=true` を送信できる。
+3. **はる**：Web で武器選択まで進み `status="drawing"` + `p1_weapon` が書かれ、iOS が自動で抜刀待機を開始することを確認する。
+4. **みずき**：大画面（Web）で `p1_ready && p2_ready` が揃ったらバトル画面へ遷移することを確認する。
+5. **はる**：PC カメラのスイング検知で `player1_score` が `+1` できる。
 5. 3 者が同じ `matchId = "test"` を見て、値が連動することを確認する。
 
 ここまで通れば、あとは各自が中身を作り込むだけ。

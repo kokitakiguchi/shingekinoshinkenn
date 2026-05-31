@@ -13,6 +13,7 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var haptics = HapticManager()
     @StateObject private var motion = MotionManager()
+    @StateObject private var firestoreSender = FirestoreEventSender()
 
     @State private var selectedWeapon: WeaponType = .lightsaber
 
@@ -32,6 +33,8 @@ struct ContentView: View {
             accelerationGauge
 
             equipButton
+
+            firestoreEventButtons
 
             if !haptics.supportsHaptics {
                 Text("⚠️ この端末はハプティクスに対応していません。\n実機（iPhone）で実行してください。")
@@ -121,6 +124,50 @@ struct ContentView: View {
         .tint(haptics.equippedWeapon == nil ? .accentColor : .red)
         .disabled(!haptics.supportsHaptics)
         .opacity(haptics.supportsHaptics ? 1 : 0.4)
+    }
+
+    private var firestoreEventButtons: some View {
+        VStack(spacing: 8) {
+            Button {
+                Task {
+                    await firestoreSender.sendReady(weapon: selectedWeapon)
+                }
+            } label: {
+                Label("構え完了を送信", systemImage: "hand.raised.fill")
+                    .frame(maxWidth: .infinity)
+                    .padding()
+            }
+            .buttonStyle(.bordered)
+            .disabled(firestoreSender.state == .sending)
+
+            Button {
+                Task {
+                    await firestoreSender.sendDrawComplete(weapon: selectedWeapon)
+                }
+            } label: {
+                Label("抜刀完了を送信", systemImage: "paperplane.fill")
+                    .frame(maxWidth: .infinity)
+                    .padding()
+            }
+            .buttonStyle(.bordered)
+            .disabled(firestoreSender.state == .sending)
+
+            Text(firestoreSender.state.message)
+                .font(.footnote)
+                .foregroundStyle(statusColor)
+                .multilineTextAlignment(.center)
+        }
+    }
+
+    private var statusColor: Color {
+        switch firestoreSender.state {
+        case .idle, .sending:
+            return .secondary
+        case .sent:
+            return .green
+        case .failed:
+            return .red
+        }
     }
 }
 

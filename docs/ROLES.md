@@ -32,26 +32,21 @@ PC の Web カメラで 2 人の動きを認識し、斬撃を判定してスコ
 
 抜刀を振動付きで実行し、完了を Firestore に送信する。**構え判定は Web 側（はる）が担当**。iOS は抜刀に集中する。
 
-**やること（センサー・振動）**
-- **Xcode / Swift（CoreMotion）** を使った、スマホの傾き・加速度の検知
-- シュッと引き抜いた際の「**抜刀完了**」の移動量計算ロジック
-- **CoreHaptics** を使った、武器ごとの精密な振動（抜刀時のジャキィン、大剣の重い減衰など）の実装
-- 抜刀完了時に `players.pX.drawn` / `drawnAt` を Firestore へ送信する
-  - ※ 現状はデモ優先で、iOS から Firestore REST API を直接叩くボタン送信を実装済み。
-  - ※ 構え完了（`ready`）は **Web 側（はる）が MediaPipe で判定して書く**。iOS は担当しない。
+**やること（センサー・振動）✅ 実装済み**
+- **CoreMotion**：加速度・傾きの検知、抜刀完了の変位積分（2階積分）ロジック
+- **CoreHaptics**：3武器（ライトセーバー・大剣・小剣）ごとの常時ハム・加速度連動・抜刀パターン・振りスパイクを実装
+- 抜刀完了時に `shinken_rooms/battle` の `p{n}_ready = true` を **Firestore REST API で直接書く**（Firebase iOS SDK なし）
+  - `FirestoreEventSender.swift`・`FirestoreListener.swift`・`FirestoreConfig.swift` 実装済み
+  - ※ 構え位置の判定（腰・肩）は**未実装**。現状はボタンを押して「構える」
 
-**やること（スマホUI ／ ※みずきから移管）**
-- **スマホ画面（SwiftUI）**：「**スタート画面**」「**剣を選ぶセレクト画面**」「**抜刀待機画面**」の UI 作成
-- 上記 UI と、自分が作るセンサー・振動ロジックの結線（画面遷移と状態の受け渡し）
+**やること（スマホUI ✅ 実装済み）**
+- `PlayerSelectView.swift`：P1/P2 選択画面（スタート画面）
+- `ContentView.swift`：武器選択・加速度ゲージ・構えボタン・抜刀待機・完了バナーを含むメイン画面
+- Web の `status="drawing"` を受信したら自動で抜刀待機開始、手動フォールバックボタンも装備
 
-**★ 初手のアクション**
-> Xcode プロジェクト（`ios-app/` フォルダ）を立ち上げ、iPhone 実機を繋いで **CoreHaptics で簡単な振動を鳴らせるか** のテスト。
-
-**現在の成果**
-- CoreHaptics による武器別振動は実装済み。Pull Request 提出済み。
-- ボタンで `drawn` を Firestore に送信する簡易連携を実装済み（`ready` は Web 側が担当）。
-- 剣選択は Web 側が `players.pX.weapon` を送信する。
-- 次は CoreMotion の検知結果から `drawn` 送信を自動化する。
+**残タスク（コードフリーズ後の確認用）**
+- 🔲 2台同時対戦での `p1_ready && p2_ready` 自動遷移の動作確認
+- 🔲 構え位置の判定（腰・肩）— 時間があれば
 
 ---
 

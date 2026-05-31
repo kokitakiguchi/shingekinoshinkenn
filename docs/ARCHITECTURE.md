@@ -77,13 +77,13 @@ matches/{matchId}
 | フィールド | 書く人 | 読む人 | 意味 |
 |------------|--------|--------|------|
 | `status` / `match_status` | Web（はる） | iOS / 全員 | 試合フェーズ遷移 |
-| `p{n}_weapon` | Web（はる）drawing 開始時 | iOS / 大画面 | 確定した武器 |
-| `p{n}_ready` | **iOS（タッキー）** 抜刀完了時 | Web（バトル開始トリガー） | 抜刀完了フラグ |
+| `p{n}_weapon` | Web（はる）drawing 開始時 | iOS / 大画面 | 確定した武器（`"sword"` / `"greatsword"` / `"lightsaber"`）|
+| `p{n}_ready` | **iOS（たき）** Firestore REST API 直書き | Web（バトル開始トリガー） | 抜刀完了フラグ |
 | `player{n}_score` | Web（はる）スイング検知時 | 大画面（みずき） | 斬撃の累計スコア |
 | `winner` | Web（バトルロジック） | 大画面（みずき） | 勝者 |
 
 > **原則：1 つのフィールドを書くのは 1 担当だけ。**
-> iOS が書くのは `p{n}_ready` のみ。武器・スコア・フェーズはすべて Web が管理する。
+> iOS が書くのは `p{n}_ready` のみ（Firebase iOS SDK なし・REST API 直叩き）。武器・スコア・フェーズはすべて Web が管理する。
 
 ---
 
@@ -100,25 +100,22 @@ selecting ──(両者の武器確定)──▶ drawing ──(p1_ready && p2_r
 
 ---
 
-## 連携テスト（最初の合流ポイント）
+## 連携テスト状況（2026-05-31 時点）
 
-繋ぎ込みは **小さく 1 往復** から。いきなり全機能を繋がない。
+> ✅ = 確認済み　🔲 = 未確認
 
-1. **Web**：武器選択で `matches/test/players/p1/weapon` を更新できる。
-2. **タッキー**：iOS で実際に抜刀して `shinken_rooms/battle` の `p1_ready=true` を送信できる。
-3. **はる**：Web で武器選択まで進み `status="drawing"` + `p1_weapon` が書かれ、iOS が自動で抜刀待機を開始することを確認する。
-4. **みずき**：大画面（Web）で `p1_ready && p2_ready` が揃ったらバトル画面へ遷移することを確認する。
-5. **はる**：PC カメラのスイング検知で `player1_score` が `+1` できる。
-5. 3 者が同じ `matchId = "test"` を見て、値が連動することを確認する。
-
-ここまで通れば、あとは各自が中身を作り込むだけ。
+1. ✅ **たき**：iOS で実際に抜刀して `shinken_rooms/battle` の `p1_ready=true` を送信できる
+2. ✅ **はる**：Web で武器選択まで進み `status="drawing"` + `p{n}_weapon` が書かれ、iOS が自動で抜刀待機を開始することを確認
+3. ✅ **はる**：PC カメラのスイング検知で `player1_score` が `+1` される
+4. ✅ **みずき**：大画面（Web）でスコア・HP・フェーズが Firestore を購読してリアルタイム反映される
+5. 🔲 `p1_ready && p2_ready` 両者揃ったら自動で `playing` 遷移することを 2 台同時で確認する
 
 ---
 
-## 決めておくべきこと（着手前に 5 分で合意）
+## 設計上の決定事項（確定済み）
 
-- [ ] Firebase プロジェクト名・`matchId` の決め方（固定 `"test"` で始める？）
-- [x] 武器はプレイヤー共通か、各自で選ぶか → **各自選択**で確定（`players.pX.weapon` を Web が書く）
-- [ ] HP の初期値・斬撃 1 回のダメージ量
-- [ ] 抜刀の「速さ」をスコアに反映するか、有無だけで良いか
-- [ ] Firestore セキュリティルール（ハッカソン中は **テストモード**で可。公開前に要見直し）
+- [x] コレクションは `shinken_rooms/battle`（固定。`matchId` 管理なし）
+- [x] 武器は各自で選ぶ → Web（はる）がポーズ判定で確定し `p{n}_weapon` を書く
+- [x] iOS は Firebase iOS SDK なし。Firestore REST API を直接叩いて `p{n}_ready` を書く
+- [x] 武器は 3 種：`"sword"`（小剣）/ `"greatsword"`（大剣）/ `"lightsaber"`（ライトセーバー）。iOS 側は `WeaponType.init(firestoreValue:)` でマッピング
+- [x] Firestore セキュリティルール：ハッカソン中はテストモード（公開リポジトリには秘密情報を入れない）

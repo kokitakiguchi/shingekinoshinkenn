@@ -9,63 +9,90 @@
 
 ## このアプリの役割（一言）
 
-スマホを「刀」に見立て、**腰から抜く居合の所作を CoreMotion で検知**し、**CoreHaptics で抜刀・斬撃の手応え（振動）を返す**。抜刀の結果は Firebase 経由で大画面・バトルロジックに共有する。
+スマホを「刀」に見立て、**加速度・変位を CoreMotion で検知**し、**CoreHaptics で抜刀・斬撃の手応え（振動）を返す**。抜刀完了は Firestore REST API を直接叩いて共有する。
 
 ---
 
-## たきの担当タスク
+## 実装済みファイル一覧（コードフリーズ時点）
 
-**センサー（CoreMotion）**
-- 傾き・加速度の検知
-~~- 「腰（刀）」「肩の後ろ（大剣）」に正しく構えられているかの判定~~
-- シュッと引き抜いた際の「抜刀完了」の移動量計算ロジック
-
-**振動（CoreHaptics）**
-- 武器ごとの精密な振動（抜刀時のジャキィン、大剣の重い減衰など）
-
-**スマホUI（SwiftUI ／ みずきから移管）**
-- スタート画面 / 剣セレクト画面 / 抜刀待機画面
-- 上記 UI とセンサー・振動ロジックの結線（画面遷移・状態受け渡し）
-
-**Firebase（※連携は はる 担当）**
-- たきは抜刀完了・構え完了などの**イベント／状態を公開**するところまで。
-- **Firestore への書き込み（iOS ↔ Firebase 連携）は はる が担当**。Firebase iOS SDK の導入・接続もはる側。
+| ファイル | 内容 |
+|---|---|
+| `PlayerSelectView.swift` | P1/P2 選択画面（スタート画面） |
+| `ContentView.swift` | メインバトル画面（武器選択・加速度ゲージ・構え・抜刀フロー全体） |
+| `MotionManager.swift` | CoreMotion：加速度検知・抜刀変位の 2 階積分・振り検出 |
+| `HapticManager.swift` | CoreHaptics：常時ハム・加速度連動・振りスパイク・抜刀パターン |
+| `WeaponType.swift` | 3 武器の全パラメータ・振動パターン・抜刀パターン定義 |
+| `FirestoreEventSender.swift` | REST API で `shinken_rooms/battle` の `p{n}_ready` を書く |
+| `FirestoreListener.swift` | 1 秒ポーリングで `status` / `p{n}_weapon` を受信 |
+| `FirestoreConfig.swift` | `FirestoreConfig.plist`（.gitignore 除外）から接続情報を読み込む |
 
 ---
 
-## 技術スタック / 前提
+## 技術スタック
 
 - Swift / SwiftUI、**Xcode**（最新版）
 - **iPhone 実機必須**（CoreHaptics・CoreMotion はシミュレータ不可）
-- Firebase iOS SDK は未導入。連携時に **Swift Package Manager** で追加し、`GoogleService-Info.plist` を同梱する
+- **Firebase iOS SDK は未使用**。`FirestoreConfig.plist` の APIキー + REST API で Firestore に直接書き込む
 - セットアップ詳細：[../docs/SETUP.md](../docs/SETUP.md)
 
 ---
 
-## Firestore 連携（書き込みは はる 担当）
+## 武器の種類（3種）
 
-> **Firestore への書き込みは はる が一手に担当**（iOS 側含む）。たきは抜刀・構えを**検知してイベントを渡す**ところまで。
-
-| フィールド | たきの関与 | 意味 |
-|------------|-----------|------|
-| `matches/{matchId}/players/{pX}/ready` | 検知してイベント提供（書くのははる） | 正しく構えられた |
-| `matches/{matchId}/players/{pX}/drawn` | 検知してイベント提供（書くのははる） | 抜刀完了 |
-| `matches/{matchId}/players/{pX}/score` | 読むだけ | 斬撃の累計（はるが書く） |
-| `matches/{matchId}/status` | 読むだけ | 試合フェーズ（はるが書く） |
-
-データモデルの全体像：[../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)
+| WeaponType | Firestore 値 | 表示名 | 振動の特徴 |
+|---|---|---|---|
+| `.lightsaber` | `"lightsaber"` | ライトセーバー | 常時ハム。抜刀：「フ…ジャキィン」。振り：鋭い transient + 余韻 |
+| `.greatsword` | `"greatsword"` | 大剣 | 静止時無音。振ると重い低音が立ち上がる。抜刀：「ズシ…ズドン」 |
+| `.smallsword` | `"sword"` | 小剣 | 軽い常時気配。抜刀：「チッ…シャキィン」。振り：連打パルス |
 
 ---
 
-## 進め方の指針（Claude へ）
+## Firestore 連携
+
+**コレクション：`shinken_rooms/battle`（固定。matchId なし）**
+
+| フィールド | iOS の操作 | 意味 |
+|---|---|---|
+| `p{n}_ready` | **書く**（抜刀完了時に `true`、起動時に `false` リセット） | 抜刀完了フラグ |
+| `status` / `match_status` | 読むだけ | 試合フェーズ（Web が書く） |
+| `p{n}_weapon` | 読むだけ | 確定した武器（Web が書く） |
+| `player{n}_score` | 読まない | スコア（Web が書く） |
+
+> **Firestore への書き込みは iOS（たき）が REST API で直接担当**。
+> 武器・スコア・フェーズはすべて Web（はる）が管理する。
+
+---
+
+## 画面・フロー
+
+```
+PlayerSelectView（P1/P2 選択）
+    ↓
+ContentView（メイン）
+    ├─ 武器 Picker（.segmented）
+    ├─ 加速度ゲージ（CoreMotion からリアルタイム更新）
+    ├─ 構えるボタン → ハム開始
+    ├─ 「Web の status=drawing を待機中」
+    │       ↓（listener.isDrawingPhaseStarted）
+    ├─ 抜刀待機 View（変位プログレスバー）
+    │       ↓（変位 >= threshold）
+    └─ 抜刀完了バナー + 振りフェーズ（スイング検知）
+           ↓（sendDrawReady）
+        Firestore: p{n}_ready = true
+```
+
+---
+
+## 未実装（コードフリーズ後の確認・改善候補）
+
+- 🔲 構え位置の判定（腰・肩後ろ）— 現状はボタンを押すだけで構え完了
+- 🔲 2 台同時対戦での `p1_ready && p2_ready` 両者揃い → `playing` 自動遷移の確認
+- 🔲 勝敗・結果表示（`winner` フィールドを受信して iOS 側に出す）
+
+---
+
+## Claude への作業指針
 
 - **作業フォルダは `ios-app/` 内のみ。** `web-parent/` や他メンバーの領域は触らない。
 - ブランチは `feature/ios-setup`。コミットは `ios:` プレフィックスで小さく。
-  - 例）`ios: CoreHaptics で抜刀の振動を再生`
-- まず動かす順序の目安：
-  1. CoreHaptics で振動を 1 発鳴らす（初手）
-  2. SwiftUI で画面ラフを 1 枚
-  3. CoreMotion で構え→抜刀の検知
-  4. 抜刀検知のイベント／状態を公開し、はるの Firestore 連携と繋ぎ込みテスト（`drawn` 更新）
-- 画面は機能ごとにファイルを分ける（例：`StartView.swift` / `WeaponSelectView.swift` / `DrawWaitView.swift`）。
-- 秘密情報（`GoogleService-Info.plist` 等）は公開リポジトリに入れない。
+- `FirestoreConfig.plist` は `.gitignore` 除外済み。コードに APIキーを直書きしない。

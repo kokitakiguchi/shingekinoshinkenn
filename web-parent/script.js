@@ -515,19 +515,7 @@ function handleWeaponSelection(pose, playerKey, regStatusEl, cardEl) {
         regStatusEl.textContent = `${weaponNameJP}の構え... (${sel.progress}%)`;
         regStatusEl.className = "reg-status detecting";
 
-        // ガイドラインの描画
-        if (debugWristKp && debugTargetKp) {
-          ctx.beginPath();
-          ctx.moveTo(debugWristKp.x, debugWristKp.y);
-          ctx.lineTo(debugTargetKp.x, debugTargetKp.y);
-          if (debugWristKp2) {
-            ctx.moveTo(debugWristKp2.x, debugWristKp2.y);
-            ctx.lineTo(debugTargetKp.x, debugTargetKp.y);
-          }
-          ctx.strokeStyle = '#ffdd59';
-          ctx.lineWidth = 3;
-          ctx.stroke();
-        }
+
 
         if (sel.accumulatedTime >= 1500) {
           sel.locked = true;
@@ -823,17 +811,7 @@ function drawSkeleton(poses) {
         } catch (circleErr) {}
       };
 
-      // 大剣の的（赤色）: 画面の左右上部（固定座標）
-      drawTargetCircle(TARGETS.player1.greatsword, p1GS_Active, 'rgba(231, 76, 60, 0.18)', '#e74c3c', "P1 大剣 (赤)", "greatsword", "player1");
-      drawTargetCircle(TARGETS.player2.greatsword, p2GS_Active, 'rgba(231, 76, 60, 0.18)', '#e74c3c', "P2 大剣 (赤)", "greatsword", "player2");
 
-      // 刀の的（青色）: 画面の左右下部（固定座標）
-      drawTargetCircle(TARGETS.player1.katana, p1KT_Active, 'rgba(52, 152, 219, 0.18)', '#3498db', "P1 刀 (青)", "sword", "player1");
-      drawTargetCircle(TARGETS.player2.katana, p2KT_Active, 'rgba(52, 152, 219, 0.18)', '#3498db', "P2 刀 (青)", "sword", "player2");
-
-      // ライトセーバーの的（黄色）: 画面の中央（固定座標）
-      drawTargetCircle(TARGETS.player1.lightsaber, p1LS_Active, 'rgba(241, 196, 15, 0.18)', '#f1c40f', "P1 セーバー (黄)", "lightsaber", "player1");
-      drawTargetCircle(TARGETS.player2.lightsaber, p2LS_Active, 'rgba(241, 196, 15, 0.18)', '#f1c40f', "P2 セーバー (黄)", "lightsaber", "player2");
     }
 
     // ── 骨格線 ＆ キーポイント描画 ──

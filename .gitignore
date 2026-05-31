@@ -16,7 +16,6 @@ DerivedData/
 .swiftpm/
 .build/
 
-# ── Firebase / 秘密情報 ────────────────
 # 公開リポジトリにするため除外する
 GoogleService-Info.plist
 **/GoogleService-Info.plist

@@ -713,6 +713,253 @@
             80% { transform: translate(-2px, 0); }
             100% { transform: translate(0, 0); filter: brightness(1.0); }
         }
+
+        /* ── ⚔️ バトルステージ専用 独立型バトルカードスタイル ── */
+        .battle-arena {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 480px; /* 中央のWebカメラ用に広大な余白を確保 */
+            width: 100%;
+            max-width: 1400px;
+            margin: 0 auto;
+            z-index: 5;
+            position: relative;
+        }
+
+        .battle-card {
+            flex: 1;
+            max-width: 320px;
+            min-width: 280px;
+            background: linear-gradient(180deg, rgba(16, 23, 37, 0.9) 0%, rgba(8, 12, 21, 0.95) 100%);
+            border: 2px solid #324665;
+            border-radius: 20px;
+            padding: 30px 20px;
+            text-align: center;
+            position: relative;
+            transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+            z-index: 10;
+        }
+
+        .battle-card.p1 {
+            border-top: 4px solid var(--neon-cyan);
+            box-shadow: 0 10px 30px rgba(0, 242, 254, 0.15);
+        }
+
+        .battle-card.p2 {
+            border-top: 4px solid var(--neon-magenta);
+            box-shadow: 0 10px 30px rgba(243, 85, 136, 0.15);
+        }
+
+        .player-tag {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 800;
+            letter-spacing: 2px;
+            margin-bottom: 12px;
+        }
+
+        .p1 .player-tag {
+            color: var(--neon-cyan);
+            text-shadow: 0 0 10px rgba(0, 242, 254, 0.5);
+        }
+
+        .p2 .player-tag {
+            color: var(--neon-magenta);
+            text-shadow: 0 0 10px rgba(243, 85, 136, 0.5);
+        }
+
+        .weapon-badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            margin-bottom: 20px;
+            color: #cbd7f5;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .weapon-badge.p1 { border-color: rgba(0, 242, 254, 0.3); }
+        .weapon-badge.p2 { border-color: rgba(243, 85, 136, 0.3); }
+
+        .score-display {
+            margin: 10px 0;
+        }
+
+        .vs-divider {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%) skewX(-15deg);
+            z-index: 4;
+            pointer-events: none;
+        }
+
+        .vs-divider .vs-text {
+            color: #4f678c;
+            font-size: 2.5rem;
+            font-style: italic;
+            border: 1px solid #324665;
+            padding: 8px 24px;
+            background: rgba(0,0,0,0.6);
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+        }
+
+        /* ── 💀 敗者パネル両断（スライス＆落下）アニメーション ── */
+        .slice-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .slice-piece {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(180deg, rgba(16, 23, 37, 0.95) 0%, rgba(8, 12, 21, 0.98) 100%);
+            border: 2px solid #e74c3c;
+            border-radius: 20px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.9);
+            pointer-events: none;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 30px 20px;
+            text-align: center;
+        }
+
+        /* クリップパスで右上破片にカット (斜めライン) */
+        .piece-top {
+            clip-path: polygon(0 0, 100% 0, 100% 35%, 0 75%);
+            border-bottom: none;
+            animation: dropPieceTop 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+        }
+
+        /* クリップパスで左下破片にカット (斜めライン) */
+        .piece-bottom {
+            clip-path: polygon(0 75%, 100% 35%, 100% 100%, 0 100%);
+            border-top: none;
+            animation: dropPieceBottom 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+        }
+
+        @keyframes dropPieceTop {
+            0% {
+                transform: translate(0, 0) rotate(0deg);
+                opacity: 1;
+            }
+            20% {
+                transform: translate(-10px, -5px) rotate(-2deg);
+                opacity: 1;
+            }
+            100% {
+                transform: translate(-120px, 900px) rotate(-35deg) scale(0.9);
+                opacity: 0;
+            }
+        }
+
+        @keyframes dropPieceBottom {
+            0% {
+                transform: translate(0, 0) rotate(0deg);
+                opacity: 1;
+            }
+            20% {
+                transform: translate(15px, 10px) rotate(3deg);
+                opacity: 1;
+            }
+            100% {
+                transform: translate(180px, 900px) rotate(45deg) scale(0.85);
+                opacity: 0;
+            }
+        }
+
+        /* ── 👑 勝者パネル プレミアム祝福演出 ── */
+        .battle-card.winner-active {
+            transform: scale(1.15) translateY(-15px);
+            z-index: 200;
+            border-width: 3px;
+        }
+
+        .battle-card.p1.winner-active {
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 60px rgba(0, 242, 254, 0.8), inset 0 0 20px rgba(0, 242, 254, 0.3);
+            animation: winnerPulseCyan 1.5s infinite alternate;
+        }
+
+        .battle-card.p2.winner-active {
+            border-color: var(--neon-magenta);
+            box-shadow: 0 0 60px rgba(243, 85, 136, 0.8), inset 0 0 20px rgba(243, 85, 136, 0.3);
+            animation: winnerPulseMagenta 1.5s infinite alternate;
+        }
+
+        @keyframes winnerPulseCyan {
+            0% { box-shadow: 0 0 40px rgba(0, 242, 254, 0.6); }
+            100% { box-shadow: 0 0 80px rgba(0, 242, 254, 1.0), 0 0 30px #fff; }
+        }
+
+        @keyframes winnerPulseMagenta {
+            0% { box-shadow: 0 0 40px rgba(243, 85, 136, 0.6); }
+            100% { box-shadow: 0 0 80px rgba(243, 85, 136, 1.0), 0 0 30px #fff; }
+        }
+
+        /* 勝利時のポップアップテキストと王冠 */
+        .winner-banner {
+            position: absolute;
+            top: -65px;
+            left: 50%;
+            transform: translateX(-50%) scale(0);
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.8rem;
+            font-weight: 900;
+            color: #ffdd59;
+            text-shadow: 0 0 15px rgba(255, 221, 89, 0.8), 0 0 30px rgba(255, 221, 89, 0.4);
+            white-space: nowrap;
+            animation: bannerPop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) 0.5s forwards;
+            z-index: 210;
+        }
+
+        @keyframes bannerPop {
+            0% { transform: translateX(-50%) scale(0); }
+            70% { transform: translateX(-50%) scale(1.2); }
+            100% { transform: translateX(-50%) scale(1.0); }
+        }
+
+        /* 引き分け（DRAW）サイン */
+        .draw-banner {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            font-family: 'Orbitron', sans-serif;
+            font-size: 5rem;
+            font-weight: 900;
+            color: #ffffff;
+            text-shadow: 0 0 20px rgba(255,255,255,0.8), 0 0 40px rgba(0, 242, 254, 0.5);
+            z-index: 300;
+            animation: drawPop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards, drawBlink 1.0s infinite alternate 0.6s;
+            pointer-events: none;
+        }
+
+        @keyframes drawPop {
+            0% { transform: translate(-50%, -50%) scale(0); }
+            100% { transform: translate(-50%, -50%) scale(1.0); }
+        }
+
+        @keyframes drawBlink {
+            0% { opacity: 0.7; }
+            100% { opacity: 1.0; filter: brightness(1.2); }
+        }
     </style>
 </head>
 <body onclick="unlockAudio()">

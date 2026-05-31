@@ -290,17 +290,17 @@ const SKELETON_CONNECTIONS = [
 ];
 
 // 武器選択用の固定ターゲット座標と半径の定義
-const TARGET_RADIUS = 55; // 基本のターゲット円の半径 (55px)
-const KEEP_RADIUS = 95;   // キープ中の許容半径 (95px) - 吸い付き境界シールド
+const TARGET_RADIUS = 75; // 基本のターゲット円の半径 (75px) - 大幅に拡大して吸い付きやすく！
+const KEEP_RADIUS = 120;  // キープ中の許容半径 (120px) - 見切れやブレでも外れないように！
 
 const TARGETS = {
   player1: { // 画面左側（青）＝ 生画像の右側（x: 300）
-    greatsword: { x: 300, y: 70 },   
+    greatsword: { x: 300, y: 85 },   // 少し下げて届きやすく
     katana: { x: 300, y: 220 },      
     lightsaber: { x: 300, y: 145 }   
   },
   player2: { // 画面右側（赤）＝ 生画像の左側（x: 100）
-    greatsword: { x: 100, y: 70 },
+    greatsword: { x: 100, y: 85 },   // 少し下げて届きやすく
     katana: { x: 100, y: 220 },
     lightsaber: { x: 100, y: 145 }
   }
@@ -522,9 +522,15 @@ function handleWeaponSelection(pose, playerKey, regStatusEl, cardEl) {
     // ── 1. 【ライトセーバー（中）】 ──
     const lsRadius = getRadius("lightsaber");
     if (rightWrist && leftWrist && rightWrist.score > 0.15 && leftWrist.score > 0.15) {
-      const rDist = Math.hypot(rightWrist.x - t.lightsaber.x, rightWrist.y - t.lightsaber.y);
-      const lDist = Math.hypot(leftWrist.x - t.lightsaber.x, leftWrist.y - t.lightsaber.y);
-      if (rDist <= lsRadius && lDist <= lsRadius) {
+      // 両手の中心（平均座標）で判定する！
+      const centerWristX = (rightWrist.x + leftWrist.x) / 2;
+      const centerWristY = (rightWrist.y + leftWrist.y) / 2;
+      
+      const dist = Math.hypot(centerWristX - t.lightsaber.x, centerWristY - t.lightsaber.y);
+      // 両手が合わさっていること（両手の距離が 65px 以内）
+      const wristsClose = Math.hypot(rightWrist.x - leftWrist.x, rightWrist.y - leftWrist.y) < 65;
+      
+      if (dist <= lsRadius && wristsClose) {
         currentPoseDetecting = "lightsaber";
         debugWristKp = rightWrist;
         debugWristKp2 = leftWrist;
@@ -535,12 +541,20 @@ function handleWeaponSelection(pose, playerKey, regStatusEl, cardEl) {
     // ── 2. 【大剣（上）】 ──
     const gsRadius = getRadius("greatsword");
     if (!currentPoseDetecting) {
-      // 大剣の構えの精度向上：手が肩より高い位置（y座標が肩より小さい）にあることを必須条件化！
-      const isRightWristInGS = rightWrist && rightWrist.score > 0.15 && Math.hypot(rightWrist.x - t.greatsword.x, rightWrist.y - t.greatsword.y) <= gsRadius;
-      const isLeftWristInGS = leftWrist && leftWrist.score > 0.15 && Math.hypot(leftWrist.x - t.greatsword.x, leftWrist.y - t.greatsword.y) <= gsRadius;
+      // 画面上部への見切れ対策：手首のy座標がターゲットy座標より高い（値が小さい）場合、yの距離は 0 とみなす（x座標の距離だけで判定する）
+      const checkGSWrist = (wrist) => {
+        if (!wrist || wrist.score <= 0.15) return false;
+        const dx = wrist.x - t.greatsword.x;
+        const dy = wrist.y < t.greatsword.y ? 0 : (wrist.y - t.greatsword.y);
+        return Math.hypot(dx, dy) <= gsRadius;
+      };
+
+      const isRightWristInGS = checkGSWrist(rightWrist);
+      const isLeftWristInGS = checkGSWrist(leftWrist);
       
-      const isRightWristAboveShoulder = rightShoulder && rightWrist && rightWrist.y < rightShoulder.y;
-      const isLeftWristAboveShoulder = leftShoulder && leftWrist && leftWrist.y < leftShoulder.y;
+      // 肩の見切れ対策：肩が検出されないか、あるいは手首が肩より高い位置にある（15pxの許容誤差あり）
+      const isRightWristAboveShoulder = !rightShoulder || rightShoulder.score <= 0.15 || (rightWrist && rightWrist.y < rightShoulder.y + 15);
+      const isLeftWristAboveShoulder = !leftShoulder || leftShoulder.score <= 0.15 || (leftWrist && leftWrist.y < leftShoulder.y + 15);
 
       if (isRightWristInGS && isRightWristAboveShoulder) {
         currentPoseDetecting = "greatsword";

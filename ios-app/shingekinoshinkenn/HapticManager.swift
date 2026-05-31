@@ -150,6 +150,7 @@ final class HapticManager: ObservableObject {
         humPlayer = nil
         equippedWeapon = nil
         lastSwingTime = .distantPast
+        isSwingArmed = true
     }
 
     // MARK: - 加速度による動的更新

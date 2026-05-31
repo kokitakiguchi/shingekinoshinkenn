@@ -7,9 +7,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Noto+Sans+JP:wght@500;900&display=swap" rel="stylesheet">
-    <!-- MediaPipe Pose ＆ Camera 公式 SDK -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+    <!-- TensorFlow.js ＆ MoveNet MultiPose 超高速2人同時骨格追跡エンジン -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.12.0/dist/tf-core.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.12.0/dist/tf-converter.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.12.0/dist/tf-backend-webgl.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js" crossorigin="anonymous"></script>
     <style>
         /* --- 共通の近未来スタジアム背景 --- */
         :root {

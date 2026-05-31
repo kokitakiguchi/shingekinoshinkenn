@@ -181,6 +181,44 @@ function switchScreen(screenId) {
 }
 window.switchScreen = switchScreen; // グローバルに露出
 
+// ── 🎯 【UNDERTALE風 ボタン攻撃エフェクト】 ──
+function triggerUndertaleSlash(targetButton) {
+  if (!targetButton) return;
+  
+  try {
+    const rect = targetButton.getBoundingClientRect();
+    const slash = document.createElement('div');
+    slash.className = 'undertale-slash';
+    
+    const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    
+    slash.style.position = 'absolute';
+    slash.style.left = (rect.left + scrollLeft) + 'px';
+    slash.style.top = (rect.top + scrollTop) + 'px';
+    slash.style.width = rect.width + 'px';
+    slash.style.height = rect.height + 'px';
+    slash.style.pointerEvents = 'none';
+    slash.style.zIndex = '9999';
+    
+    const line = document.createElement('div');
+    line.className = 'undertale-slash-line';
+    slash.appendChild(line);
+    
+    document.body.appendChild(slash);
+    
+    // ボタン自体の揺れ（被弾ブレ）エフェクト
+    targetButton.classList.add('undertale-hit-shake');
+    
+    setTimeout(() => {
+      slash.remove();
+      targetButton.classList.remove('undertale-hit-shake');
+    }, 450);
+  } catch (e) {
+    console.log("エフェクト生成エラー:", e);
+  }
+}
+
 // ── 🎯 【グローバルスイング（決定）ハンドラー】 ──
 function handleGlobalSwing(playerKey) {
   const now = Date.now();
@@ -196,10 +234,20 @@ function handleGlobalSwing(playerKey) {
     
     if (currentActiveScreen === "startScreen") {
       console.log("スイング検知：スタート画面決定 -> 説明画面へ");
-      switchScreen("guideScreen");
+      const btn = document.querySelector('#startScreen .btn-primary');
+      if (btn) triggerUndertaleSlash(btn);
+      
+      setTimeout(() => {
+        switchScreen("guideScreen");
+      }, 350); // エフェクトと揺れをしっかり見せるため350msディレイ
     } else if (currentActiveScreen === "guideScreen") {
       console.log("スイング検知：説明画面決定 -> 武器選択画面へ");
-      switchScreen("selectionScreen");
+      const btn = document.querySelector('#guideScreen .btn-primary');
+      if (btn) triggerUndertaleSlash(btn);
+      
+      setTimeout(() => {
+        switchScreen("selectionScreen");
+      }, 350); // エフェクトと揺れをしっかり見せるため350msディレイ
     }
     return;
   }

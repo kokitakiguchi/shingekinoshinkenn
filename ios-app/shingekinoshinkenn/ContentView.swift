@@ -70,6 +70,12 @@ struct ContentView: View {
         .onAppear {
             listener.playerNumber = playerNumber
             listener.startListening()
+            // ドキュメント記載の流れ：まずスマホから Firebase に書き込みを 1 発走らせて
+            // presence を伝え、p{n}_ready を false にリセットする。
+            // この送信のあと、Web 側が status="drawing" を返し、それを onChange で拾う。
+            Task {
+                await firestoreSender.sendDrawReady(playerNumber: playerNumber, value: false)
+            }
         }
         .onDisappear {
             listener.stopListening()
@@ -85,15 +91,11 @@ struct ContentView: View {
         }
         // Web が status="drawing" にしたら抜刀待機を自動開始する。
         // このタイミングで p{n}_weapon も更新されているため、武器の同期も先に行う。
+        // 未装備でも自動で構えてから待機に入る（ユーザは「構える」ボタンを押さなくてよい）。
         .onChange(of: listener.isDrawingPhaseStarted) { _, started in
-            guard started, haptics.equippedWeapon != nil else { return }
+            guard started else { return }
             listener.consumeDrawingPhase()
-            // weapon が同時に届いていれば先に同期
-            if let w = listener.weapon, w != selectedWeapon {
-                selectedWeapon = w
-                haptics.equip(w) // 武器が変わったので装備し直し
-            }
-            beginDrawWaiting()
+            enterDrawWaitingFromServer()
         }
         // Web が p{n}_weapon を更新したら武器を同期する。
         .onChange(of: listener.weapon) { _, newWeapon in
@@ -183,27 +185,26 @@ struct ContentView: View {
         VStack(spacing: 12) {
             phaseBadge
 
-            if haptics.equippedWeapon == nil {
-                Text("先に「\(selectedWeapon.displayName)を構える」を押してください")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } else if isAwaitingDraw {
+            if isAwaitingDraw {
                 drawWaitingView
             } else if haptics.isSwingPhaseActive {
                 if let dist = lastDrawnDistance {
                     drawCompletedBanner(distance: dist)
                 }
             } else {
-                // 構えて Web の drawing フェーズ待ち中
-                VStack(spacing: 4) {
-                    Label("Web の武器選択完了を待機中...",
+                // status="drawing" 受信を待機中（未装備でも OK：受信時に自動装備する）。
+                VStack(spacing: 10) {
+                    Label("Web の status=drawing を待機中...",
                           systemImage: "antenna.radiowaves.left.and.right")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                     Text("（Web 側で両者の武器が確定すると自動で抜刀待機が始まります）")
                         .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+
+                    manualDrawFallbackButton
                 }
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
             }
         }
         .animation(.spring(response: 0.45, dampingFraction: 0.7), value: lastDrawnDistance != nil)
@@ -291,6 +292,49 @@ struct ContentView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
+        }
+    }
+
+    /// 通信が来ない場合のフォールバック。Web の status=drawing を待たず、
+    /// 現在選択中の武器で構え→抜刀待機までを手動で進める。
+    private var manualDrawFallbackButton: some View {
+        Button {
+            startManualDrawWaiting()
+        } label: {
+            Label("通信不通の時：手動で抜刀開始", systemImage: "hand.tap.fill")
+                .font(.footnote.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+        }
+        .buttonStyle(.bordered)
+        .tint(.orange)
+    }
+
+    /// Web から status="drawing" を受け取った時の処理。未装備なら自動装備してから
+    /// 抜刀待機に入る。武器が変わっていれば装備し直す。
+    private func enterDrawWaitingFromServer() {
+        let weapon = listener.weapon ?? selectedWeapon
+        if weapon != selectedWeapon { selectedWeapon = weapon }
+        ensureEquipped(weapon: weapon)
+        beginDrawWaiting()
+    }
+
+    /// 手動フォールバック：通信に頼らず、選択中の武器で抜刀待機に入る。
+    private func startManualDrawWaiting() {
+        let weapon = selectedWeapon
+        ensureEquipped(weapon: weapon)
+        beginDrawWaiting()
+    }
+
+    /// 指定の武器で装備状態を整える。未装備なら新規装備、別武器なら装備し直し。
+    private func ensureEquipped(weapon: WeaponType) {
+        if haptics.equippedWeapon == nil {
+            haptics.equip(weapon)
+            motion.start { [weak haptics] g in
+                haptics?.updateMotion(accelerationMagnitude: g)
+            }
+        } else if haptics.equippedWeapon != weapon {
+            haptics.equip(weapon)
         }
     }
 

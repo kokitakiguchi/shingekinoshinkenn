@@ -15,6 +15,7 @@
 //  Firebase iOS SDK なしで動作する（URLSession + REST API）。
 //
 
+import Combine
 import Foundation
 
 @MainActor

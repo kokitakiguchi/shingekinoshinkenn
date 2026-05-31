@@ -118,9 +118,9 @@
         .guide-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 40px;
+            gap: 24px;
             width: 100%;
-            max-width: 980px;
+            max-width: 960px;
             margin: 0 auto;
         }
         .panel {
@@ -128,16 +128,16 @@
             border: 2px solid #324665;
             border-top: 4px solid #00f2fe;
             border-radius: 12px;
-            padding: 40px;
+            padding: 24px 28px;
             box-shadow: 0 20px 50px rgba(0,0,0,0.8);
         }
         .panel-title {
             font-family: 'Orbitron', sans-serif;
-            font-size: 1.6rem;
+            font-size: 1.35rem;
             font-weight: 900;
-            margin-bottom: 25px;
+            margin-bottom: 15px;
             border-bottom: 2px solid rgba(0, 242, 254, 0.3);
-            padding-bottom: 10px;
+            padding-bottom: 8px;
             color: #00f2fe;
             display: flex;
             justify-content: space-between;
@@ -145,23 +145,23 @@
         }
         .panel-title span { font-size: 1rem; color: #aaa; }
 
-        .rule-box { margin-bottom: 25px; }
-        .rule-box h4 { color: #ccff00; margin-bottom: 8px; font-size: 1.2rem; }
-        .rule-box p { font-size: 1rem; color: #ddd; line-height: 1.6; margin: 0; }
+        .rule-box { margin-bottom: 12px; }
+        .rule-box h4 { color: #ccff00; margin-bottom: 4px; font-size: 1.05rem; }
+        .rule-box p { font-size: 0.9rem; color: #ddd; line-height: 1.5; margin: 0; }
 
-        .weapon-list { display: flex; flex-direction: column; gap: 20px; }
+        .weapon-list { display: flex; flex-direction: column; gap: 12px; }
         .weapon-card {
             background: rgba(255,255,255,0.02);
             border-left: 6px solid #fff;
-            padding: 20px;
+            padding: 12px 15px;
             border-radius: 0 8px 8px 0;
             border: 1px solid rgba(255,255,255,0.05);
         }
         .weapon-card.katana { border-left-color: #ff416c; }
         .weapon-card.taiken { border-left-color: #ffaa00; }
         .weapon-card.saber { border-left-color: #00f2fe; }
-        .weapon-name { font-weight: 900; font-size: 1.3rem; margin-bottom: 5px; }
-        .weapon-desc { font-size: 0.95rem; color: #b5c2d5; line-height: 1.5; }
+        .weapon-name { font-weight: 900; font-size: 1.1rem; margin-bottom: 4px; }
+        .weapon-desc { font-size: 0.85rem; color: #b5c2d5; line-height: 1.4; }
 
         .selection-grid {
             display: grid;
@@ -904,7 +904,7 @@
 
         /* ── 👑 勝者パネル プレミアム祝福演出 ── */
         .battle-card.winner-active {
-            transform: scale(1.15) translateY(-15px);
+            transform: scale(1.08) translateY(-35px);
             z-index: 200;
             border-width: 3px;
         }
@@ -1026,12 +1026,12 @@
             box-shadow: 0 0 10px #fff, 0 0 20px #ffd700, 0 0 30px #ffd700, 0 0 40px #ff8c00;
             animation: pulseNeon 1.5s infinite alternate;
             border-radius: 12px;
-            max-width: 200px;
-            height: 240px;
+            max-width: 165px;
+            height: 195px;
             object-fit: cover;
             transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             display: block;
-            margin: 10px auto 0;
+            margin: 6px auto 0;
         }
         @keyframes pulseNeon {
             from { box-shadow: 0 0 10px #fff, 0 0 20px #ffd700, 0 0 30px #ffd700; }
@@ -1040,7 +1040,7 @@
 
         /* 勝者写真ポップアップ表示コンテナ */
         .winner-photo-container {
-            margin-top: 15px;
+            margin-top: 8px;
             display: flex;
             flex-direction: column;
             align-items: center;

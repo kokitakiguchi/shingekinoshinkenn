@@ -78,15 +78,15 @@ const TARGET_RADIUS = 55; // 基本のターゲット円の半径 (55px)
 const KEEP_RADIUS = 95;   // キープ中の許容半径 (95px) - 吸い付き境界シールド
 
 const TARGETS = {
-  player1: {
-    greatsword: { x: 100, y: 70 },   // 大剣 (左右上部)
-    katana: { x: 100, y: 220 },      // 刀 (左右下部)
-    lightsaber: { x: 100, y: 145 }   // セーバー (左右中央)
+  player1: { // 💡 画面左側（青）＝ 生画像の右側（x: 300）
+    greatsword: { x: 300, y: 70 },   
+    katana: { x: 300, y: 220 },      
+    lightsaber: { x: 300, y: 145 }   
   },
-  player2: {
-    greatsword: { x: 300, y: 70 },
-    katana: { x: 300, y: 220 },
-    lightsaber: { x: 300, y: 145 }
+  player2: { // 💡 画面右側（赤）＝ 生画像の左側（x: 100）
+    greatsword: { x: 100, y: 70 },
+    katana: { x: 100, y: 220 },
+    lightsaber: { x: 100, y: 145 }
   }
 };
 
@@ -267,7 +267,7 @@ function handleWeaponSelection(pose, playerKey, regStatusEl, cardEl) {
       poseCenterX = rightWrist.x;
     }
 
-    const isP1 = poseCenterX < 200;
+    const isP1 = poseCenterX > 200; // 💡 ミラー反転：生画像で右側(x > 200)の人が、画面上では左側（Player 1）に映る
 
     // 当該プレイヤーに割り当てられた固定ターゲット座標を参照
     const t = isP1 ? TARGETS.player1 : TARGETS.player2;
@@ -680,10 +680,8 @@ function drawSkeleton(poses) {
                 ctx.moveTo(kp1.x, kp1.y);
                 ctx.lineTo(kp2.x, kp2.y);
                 ctx.strokeStyle = playerColor;
-                ctx.lineWidth = 4;
+                ctx.lineWidth = 4.5; // 💡 線幅を少し太くして視認性を向上
                 ctx.lineCap = 'round';
-                ctx.shadowColor = shadowColor;
-                ctx.shadowBlur = 10;
                 ctx.stroke();
               }
             } catch (connErr) {}
@@ -697,8 +695,6 @@ function drawSkeleton(poses) {
                 const isWrist = (idx === 15 || idx === 16);
                 ctx.arc(kp.x, kp.y, isWrist ? 7 : 5, 0, 2 * Math.PI);
                 ctx.fillStyle = isWrist ? '#ff3f34' : '#ffffff';
-                ctx.shadowBlur = 8;
-                ctx.shadowColor = isWrist ? '#ff3f34' : shadowColor;
                 ctx.fill();
               }
             } catch (dotErr) {}
@@ -713,8 +709,6 @@ function drawSkeleton(poses) {
             ctx.font = "bold 15px 'Space Grotesk', sans-serif";
             ctx.fillStyle = playerColor;
             ctx.textAlign = "center";
-            ctx.shadowBlur = 6;
-            ctx.shadowColor = shadowColor;
             ctx.fillText("READY!", 0, 0);
             ctx.restore();
           }

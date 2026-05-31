@@ -29,6 +29,17 @@ final class HapticManager: ObservableObject {
     /// 現在装備中の武器。`nil` のときはハム停止状態。
     @Published private(set) var equippedWeapon: WeaponType?
 
+    /// 振りフェーズ（抜刀完了後）かどうか。`true` の間だけ加速度由来の処理
+    /// （ハム強度の動的更新 + 振り検出）を行う。
+    /// 「構える → 抜く → 振る」の順なので、equip 直後と抜刀待機中はいずれも
+    /// `false` のままで、加速度連動の振動は走らない（ハムは静止値で再生のみ継続）。
+    @Published private(set) var isSwingPhaseActive: Bool = false
+
+    /// 「構え完了」通知を受け取り済みかどうか。ライトセーバはここまで本格的なハムを
+    /// 立ち上げない（無音）。greatsword/smallsword は equip 直後から静止値で鳴っているので
+    /// このフラグの影響は受けない。
+    @Published private(set) var isStanceComplete: Bool = false
+
     private var engine: CHHapticEngine?
     private var humPlayer: CHHapticAdvancedPatternPlayer?
     private var lastSwingTime: Date = .distantPast
@@ -127,10 +138,11 @@ final class HapticManager: ObservableObject {
             let player = try engine.makeAdvancedPlayer(with: pattern)
             player.loopEnabled = true
             player.loopEnd = 0 // 0 = パターン全体をループ
-            // 静止状態から始める
+            // 構え直後はライトセーバを無音にしておき、構え完了の通知が来てから本格的な
+            // ハムを立ち上げる（markStanceComplete で intensity を at-rest に持ち上げる）。
             try sendHumParameters(
                 to: player,
-                intensity: weapon.humIntensityAtRest,
+                intensity: preStanceIntensity(for: weapon),
                 sharpness: weapon.humSharpnessAtRest
             )
             try player.start(atTime: CHHapticTimeImmediate)
@@ -151,6 +163,79 @@ final class HapticManager: ObservableObject {
         equippedWeapon = nil
         lastSwingTime = .distantPast
         isSwingArmed = true
+        isSwingPhaseActive = false
+        isStanceComplete = false
+    }
+
+    /// 構え直後のハム強度。ライトセーバは無音、それ以外は静止値で鳴らす。
+    private func preStanceIntensity(for weapon: WeaponType) -> Float {
+        weapon == .lightsaber ? 0 : weapon.humIntensityAtRest
+    }
+
+    // MARK: - 構えフェーズ制御
+
+    /// サーバ（今はボタン）から「構え完了」を受け取った瞬間に呼ぶ。
+    /// ライトセーバの本格的なハムはこのタイミングで立ち上がる。
+    func markStanceComplete() {
+        isStanceComplete = true
+        guard let player = humPlayer, let weapon = equippedWeapon else { return }
+        try? sendHumParameters(
+            to: player,
+            intensity: weapon.humIntensityAtRest,
+            sharpness: weapon.humSharpnessAtRest
+        )
+        logger.notice("🪶 🙌 構え完了 — ハムを at-rest に立ち上げ")
+    }
+
+    /// 抜刀待機をキャンセルしたときなどに呼ぶ。ライトセーバは再び無音に戻る。
+    func resetStanceComplete() {
+        isStanceComplete = false
+        guard let player = humPlayer, let weapon = equippedWeapon else { return }
+        try? sendHumParameters(
+            to: player,
+            intensity: preStanceIntensity(for: weapon),
+            sharpness: weapon.humSharpnessAtRest
+        )
+        logger.notice("🪶 ↩️ 構え完了リセット — ハムを構え直後の値に戻す")
+    }
+
+    // MARK: - 振りフェーズ制御
+
+    /// 抜刀完了後に呼ぶ。これ以降、加速度連動のハム更新と振り検出が有効になる。
+    /// 抜刀直後の余韻で勝手にスイング判定が走らないよう、再武装は g が落ちるまで待たせる。
+    func activateSwingPhase() {
+        isSwingPhaseActive = true
+        isSwingArmed = false
+        lastSwingTime = Date()
+        logger.notice("🪶 ⚔️ 振りフェーズ ON — 加速度連動のハム/振り検出を有効化")
+    }
+
+    /// 振りフェーズを明示的に止めたいときに呼ぶ（テストや UI からのリセット用）。
+    func deactivateSwingPhase() {
+        guard isSwingPhaseActive else { return }
+        isSwingPhaseActive = false
+        logger.notice("🪶 ⚔️ 振りフェーズ OFF")
+    }
+
+    /// 抜刀完了の振動を 1 発鳴らす。剣の振り（`playSwing`）とは構造が違う
+    /// 「弱→強→余韻」パターン（フィードバック.md Level 2）に、登録済みの音源を
+    /// 同期再生（Level 3）して達成感を強めている。
+    func playDraw(weapon: WeaponType) {
+        guard supportsHaptics, let engine else {
+            logger.notice("🪶 playDraw: ⚠️ 非対応端末のためスキップ")
+            return
+        }
+        do {
+            try engine.start()
+            let pattern = try weapon.makeDrawPattern(
+                audioResourceID: swingAudioResources[weapon]
+            )
+            let player = try engine.makePlayer(with: pattern)
+            try player.start(atTime: CHHapticTimeImmediate)
+            logger.notice("🪶 🗡️ 抜刀振動: \(weapon.rawValue, privacy: .public)")
+        } catch {
+            logger.error("🪶 playDraw: ❌ \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     // MARK: - 加速度による動的更新
@@ -164,6 +249,12 @@ final class HapticManager: ObservableObject {
             logger.debug("🪶 updateMotion: 未装備のためスキップ g=\(g, privacy: .public)")
             return
         }
+
+        // 「構える → 抜く → 振る」の順なので、抜刀完了で振りフェーズが有効になるまで
+        // 加速度連動の処理（ハム強度の動的更新、振り検出）はいっさい走らせない。
+        // ハム自体は equip 時に静止値で再生済みなので、無音や単調な低唸りのまま続く。
+        guard isSwingPhaseActive else { return }
+
         let normalized = Float(min(max(g, 0) / accelerationNormalizationCeiling, 1.0))
 
         if let player = humPlayer {

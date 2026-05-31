@@ -70,6 +70,19 @@ enum WeaponType: String, CaseIterable, Identifiable {
         }
     }
 
+    // MARK: - 抜刀（引き抜きの移動量）検出
+
+    /// 「抜刀完了」とみなす移動量（m）。サーバから「構え完了」を受け取ったあと、
+    /// `userAcceleration` を 2 階積分した変位ベクトルの長さがこの値を超えたら発火する。
+    /// 軽い武器ほど短い距離で抜けたとみなす。
+    var drawDisplacementThreshold: Double {
+        switch self {
+        case .lightsaber: return 0.06
+        case .greatsword: return 0.08
+        case .smallsword: return 0.04
+        }
+    }
+
     // MARK: - 振り検出
 
     /// この値（g）を超えたら「振り」とみなし、専用パターンを 1 発鳴らす
@@ -223,6 +236,134 @@ enum WeaponType: String, CaseIterable, Identifiable {
 
         // 振動と同じタイミングで音源も鳴らす（登録済みのときのみ）。
         // 音は無編集（音程・音量を boost で変調しない）でそのまま鳴らす。
+        if let resourceID = audioResourceID {
+            events.append(CHHapticEvent(
+                audioResourceID: resourceID,
+                parameters: [],
+                relativeTime: 0
+            ))
+        }
+
+        return try CHHapticPattern(events: events, parameters: [])
+    }
+
+    /// 抜刀完了の一発パターン。`makeSwingPattern` とは構造的に別物にして、
+    /// 抜刀と振りが体感で混ざらないようにする（タイミング・カーブを変える）。
+    /// - フィードバック.md Level 2「弱 → 強 → 余韻」の 3 段構成
+    /// - フィードバック.md Level 3 として、音源 ID を渡せば振動と同期再生する
+    /// - 振り側より総じて長く・存在感のある余韻にして、抜けた瞬間の達成感を強める
+    /// - Parameter audioResourceID: 同期再生する音源（事前に engine に登録済みのもの）。
+    ///   nil なら振動のみ。
+    func makeDrawPattern(
+        audioResourceID: CHHapticAudioResourceID? = nil
+    ) throws -> CHHapticPattern {
+        var events: [CHHapticEvent] = []
+        switch self {
+        case .lightsaber:
+            // 「フ…ジャキィン……」3 段：起動の溜め → 確定の一閃 → 長めの余韻。
+            // 振りパターンより明らかに「重さ・長さ」があるよう余韻を 2 倍以上に。
+            events.append(CHHapticEvent(  // 1) 起動の溜め（弱）
+                eventType: .hapticContinuous,
+                parameters: [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.45),
+                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.65),
+                    CHHapticEventParameter(parameterID: .attackTime, value: 0.05),
+                    CHHapticEventParameter(parameterID: .decayTime, value: 0.0),
+                    CHHapticEventParameter(parameterID: .sustained, value: 1.0)
+                ],
+                relativeTime: 0,
+                duration: 0.10
+            ))
+            events.append(CHHapticEvent(  // 2) 確定の一閃（強）
+                eventType: .hapticTransient,
+                parameters: [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0),
+                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 1.0)
+                ],
+                relativeTime: 0.10
+            ))
+            events.append(CHHapticEvent(  // 3) 余韻（長め）
+                eventType: .hapticContinuous,
+                parameters: [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.75),
+                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.9),
+                    CHHapticEventParameter(parameterID: .attackTime, value: 0.0),
+                    CHHapticEventParameter(parameterID: .decayTime, value: 0.4),
+                    CHHapticEventParameter(parameterID: .sustained, value: 0.0)
+                ],
+                relativeTime: 0.11,
+                duration: 0.42
+            ))
+
+        case .greatsword:
+            // 「ズシ…ズドンッ……」：重みのある立ち上がり → 確定の一打 → 低音のアフターショック。
+            events.append(CHHapticEvent(  // 1) 重みのある立ち上がり（弱）
+                eventType: .hapticContinuous,
+                parameters: [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.5),
+                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.15),
+                    CHHapticEventParameter(parameterID: .attackTime, value: 0.4),
+                    CHHapticEventParameter(parameterID: .decayTime, value: 0.0),
+                    CHHapticEventParameter(parameterID: .sustained, value: 1.0)
+                ],
+                relativeTime: 0,
+                duration: 0.45
+            ))
+            events.append(CHHapticEvent(  // 2) 確定の一打（強）
+                eventType: .hapticTransient,
+                parameters: [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0),
+                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.25)
+                ],
+                relativeTime: 0.45
+            ))
+            events.append(CHHapticEvent(  // 3) 低音のアフターショック（余韻）
+                eventType: .hapticContinuous,
+                parameters: [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.6),
+                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.05),
+                    CHHapticEventParameter(parameterID: .attackTime, value: 0.0),
+                    CHHapticEventParameter(parameterID: .decayTime, value: 0.55),
+                    CHHapticEventParameter(parameterID: .sustained, value: 0.0)
+                ],
+                relativeTime: 0.46,
+                duration: 0.60
+            ))
+
+        case .smallsword:
+            // 「チッ…シャキィン……」：軽い予兆 → 鋭い本鳴り → 高めの尾。
+            events.append(CHHapticEvent(  // 1) ごく軽い予兆（弱）
+                eventType: .hapticTransient,
+                parameters: [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.35),
+                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.8)
+                ],
+                relativeTime: 0
+            ))
+            events.append(CHHapticEvent(  // 2) 鋭い本鳴り（強）
+                eventType: .hapticTransient,
+                parameters: [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0),
+                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 1.0)
+                ],
+                relativeTime: 0.06
+            ))
+            events.append(CHHapticEvent(  // 3) 高めの尾（余韻）
+                eventType: .hapticContinuous,
+                parameters: [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.55),
+                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.95),
+                    CHHapticEventParameter(parameterID: .attackTime, value: 0.0),
+                    CHHapticEventParameter(parameterID: .decayTime, value: 0.22),
+                    CHHapticEventParameter(parameterID: .sustained, value: 0.0)
+                ],
+                relativeTime: 0.075,
+                duration: 0.24
+            ))
+        }
+
+        // フィードバック.md Level 3：振動と同じタイミングで音源も同期再生する。
+        // 現状は ライトセーバ.mp3 のみ登録されているので、ライトセーバ抜刀時だけ音が鳴る。
         if let resourceID = audioResourceID {
             events.append(CHHapticEvent(
                 audioResourceID: resourceID,

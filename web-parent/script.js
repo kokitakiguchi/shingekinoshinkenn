@@ -3,14 +3,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebas
 import { getFirestore, doc, setDoc, onSnapshot, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 // ── Firebase 初期化設定 ──
-const firebaseConfig = {
-  apiKey: "AIzaSyCkW3UAnb8jRF8VJggYD69Apyb8GZYY7LY",
-  authDomain: "momotake-2f30b.firebaseapp.com",
-  projectId: "momotake-2f30b",
-  storageBucket: "momotake-2f30b.firebasestorage.app",
-  messagingSenderId: "321614595316",
-  appId: "1:321614595316:web:5bd921f114eb8f4c58caa1"
-};
+import { firebaseConfig } from "./firebase-config.js";
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);

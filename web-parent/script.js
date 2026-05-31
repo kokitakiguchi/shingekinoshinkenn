@@ -333,6 +333,80 @@ function getAngle(p1, p2, p3) {
   }
 }
 
+// 各ポーズを基準とした動的な武器選択ターゲット座標と半径の計算
+function getDynamicTargets(pose) {
+  try {
+    const leftShoulder = pose.keypoints[5];
+    const rightShoulder = pose.keypoints[6];
+    const leftHip = pose.keypoints[11];
+    const rightHip = pose.keypoints[12];
+    const nose = pose.keypoints[0];
+
+    // 肩の中心点
+    let playerCenterX = 200;
+    let playerCenterY = 150;
+    let hasShoulders = false;
+
+    if (leftShoulder && rightShoulder && leftShoulder.score > 0.15 && rightShoulder.score > 0.15) {
+      playerCenterX = (leftShoulder.x + rightShoulder.x) / 2;
+      playerCenterY = (leftShoulder.y + rightShoulder.y) / 2;
+      hasShoulders = true;
+    } else if (nose && nose.score > 0.15) {
+      playerCenterX = nose.x;
+      playerCenterY = nose.y + 40;
+    }
+
+    // 体格（カメラとの距離）によるスケーリング比率の計算
+    let scaleRatio = 1.0;
+    if (hasShoulders) {
+      const shoulderWidth = Math.hypot(leftShoulder.x - rightShoulder.x, leftShoulder.y - rightShoulder.y);
+      scaleRatio = Math.max(0.6, Math.min(1.8, shoulderWidth / 85)); // 標準肩幅 85px を基準に制限をかける
+    }
+
+    // 鼻の座標フォールバック
+    const noseY = (nose && nose.score > 0.15) ? nose.y : (playerCenterY - 40 * scaleRatio);
+
+    // 大剣：頭（鼻）の上部
+    const gsTarget = {
+      x: playerCenterX,
+      y: noseY - 55 * scaleRatio
+    };
+
+    // ライトセーバー：胸（肩中心より少し下）
+    const lsTarget = {
+      x: playerCenterX,
+      y: playerCenterY + 30 * scaleRatio
+    };
+
+    // 刀：腰（股関節）の横
+    let katanaLeftTarget = { x: playerCenterX - 45 * scaleRatio, y: playerCenterY + 90 * scaleRatio };
+    let katanaRightTarget = { x: playerCenterX + 45 * scaleRatio, y: playerCenterY + 90 * scaleRatio };
+
+    if (leftHip && rightHip && leftHip.score > 0.15 && rightHip.score > 0.15) {
+      const hipY = (leftHip.y + rightHip.y) / 2;
+      katanaLeftTarget = { x: leftHip.x - 20 * scaleRatio, y: hipY };
+      katanaRightTarget = { x: rightHip.x + 20 * scaleRatio, y: hipY };
+    }
+
+    return {
+      scaleRatio,
+      greatsword: gsTarget,
+      lightsaber: lsTarget,
+      katanaLeft: katanaLeftTarget,
+      katanaRight: katanaRightTarget
+    };
+  } catch (e) {
+    console.error("getDynamicTargets エラー:", e);
+    return {
+      scaleRatio: 1.0,
+      greatsword: { x: 200, y: 70 },
+      lightsaber: { x: 200, y: 145 },
+      katanaLeft: { x: 150, y: 220 },
+      katanaRight: { x: 250, y: 220 }
+    };
+  }
+}
+
 // フェーズに応じたUI更新
 function updatePhaseUI() {
   try {
@@ -504,14 +578,14 @@ function handleWeaponSelection(pose, playerKey, regStatusEl, cardEl) {
       poseCenterX = rightWrist.x;
     }
 
-    const isP1 = poseCenterX > 200; // ミラー反転：生画像で右側(x > 200)の人が、画面上では左側（Player 1）に映る
-
-    // 当該プレイヤーに割り当てられた固定ターゲット座標を参照
-    const t = isP1 ? TARGETS.player1 : TARGETS.player2;
+    // ── 人基準の相対座標から動的ターゲットを取得 ──
+    const dTargets = getDynamicTargets(pose);
+    const scaleRatio = dTargets.scaleRatio;
 
     // 現在吸い付き中の武器かどうかに応じて、判定半径を動的に決定（境界シールド）
     const getRadius = (weaponKey) => {
-      return (sel.detectingWeapon === weaponKey) ? KEEP_RADIUS : TARGET_RADIUS;
+      const baseRadius = (sel.detectingWeapon === weaponKey) ? KEEP_RADIUS : TARGET_RADIUS;
+      return baseRadius * scaleRatio;
     };
 
     let currentPoseDetecting = null;
@@ -526,15 +600,15 @@ function handleWeaponSelection(pose, playerKey, regStatusEl, cardEl) {
       const centerWristX = (rightWrist.x + leftWrist.x) / 2;
       const centerWristY = (rightWrist.y + leftWrist.y) / 2;
       
-      const dist = Math.hypot(centerWristX - t.lightsaber.x, centerWristY - t.lightsaber.y);
-      // 両手が合わさっていること（両手の距離が 65px 以内）
-      const wristsClose = Math.hypot(rightWrist.x - leftWrist.x, rightWrist.y - leftWrist.y) < 65;
+      const dist = Math.hypot(centerWristX - dTargets.lightsaber.x, centerWristY - dTargets.lightsaber.y);
+      // 両手が合わさっていること（両手の距離が 65px * scaleRatio 以内）
+      const wristsClose = Math.hypot(rightWrist.x - leftWrist.x, rightWrist.y - leftWrist.y) < (65 * scaleRatio);
       
       if (dist <= lsRadius && wristsClose) {
         currentPoseDetecting = "lightsaber";
         debugWristKp = rightWrist;
         debugWristKp2 = leftWrist;
-        debugTargetKp = t.lightsaber;
+        debugTargetKp = dTargets.lightsaber;
       }
     }
 
@@ -544,8 +618,8 @@ function handleWeaponSelection(pose, playerKey, regStatusEl, cardEl) {
       // 画面上部への見切れ対策：手首のy座標がターゲットy座標より高い（値が小さい）場合、yの距離は 0 とみなす（x座標の距離だけで判定する）
       const checkGSWrist = (wrist) => {
         if (!wrist || wrist.score <= 0.15) return false;
-        const dx = wrist.x - t.greatsword.x;
-        const dy = wrist.y < t.greatsword.y ? 0 : (wrist.y - t.greatsword.y);
+        const dx = wrist.x - dTargets.greatsword.x;
+        const dy = wrist.y < dTargets.greatsword.y ? 0 : (wrist.y - dTargets.greatsword.y);
         return Math.hypot(dx, dy) <= gsRadius;
       };
 
@@ -559,11 +633,11 @@ function handleWeaponSelection(pose, playerKey, regStatusEl, cardEl) {
       if (isRightWristInGS && isRightWristAboveShoulder) {
         currentPoseDetecting = "greatsword";
         debugWristKp = rightWrist;
-        debugTargetKp = t.greatsword;
+        debugTargetKp = dTargets.greatsword;
       } else if (isLeftWristInGS && isLeftWristAboveShoulder) {
         currentPoseDetecting = "greatsword";
         debugWristKp = leftWrist;
-        debugTargetKp = t.greatsword;
+        debugTargetKp = dTargets.greatsword;
       }
     }
 
@@ -574,28 +648,28 @@ function handleWeaponSelection(pose, playerKey, regStatusEl, cardEl) {
       const leftElbow = pose.keypoints[7];
       const rightElbow = pose.keypoints[8];
       
-      // 右手での刀の構え判定
+      // 右手での刀の構え判定（右腰ターゲットを使用）
       let rightAngle = 180;
       if (rightShoulder && rightElbow && rightWrist) {
         rightAngle = getAngle(rightShoulder, rightElbow, rightWrist);
       }
-      const isRightWristInKatana = rightWrist && rightWrist.score > 0.15 && Math.hypot(rightWrist.x - t.katana.x, rightWrist.y - t.katana.y) <= ktRadius;
+      const isRightWristInKatana = rightWrist && rightWrist.score > 0.15 && Math.hypot(rightWrist.x - dTargets.katanaRight.x, rightWrist.y - dTargets.katanaRight.y) <= ktRadius;
       
-      // 左手での刀の構え判定
+      // 左手での刀の構え判定（左腰ターゲットを使用）
       let leftAngle = 180;
       if (leftShoulder && leftElbow && leftWrist) {
         leftAngle = getAngle(leftShoulder, leftElbow, leftWrist);
       }
-      const isLeftWristInKatana = leftWrist && leftWrist.score > 0.15 && Math.hypot(leftWrist.x - t.katana.x, leftWrist.y - t.katana.y) <= ktRadius;
+      const isLeftWristInKatana = leftWrist && leftWrist.score > 0.15 && Math.hypot(leftWrist.x - dTargets.katanaLeft.x, leftWrist.y - dTargets.katanaLeft.y) <= ktRadius;
 
       if (isRightWristInKatana && rightAngle <= 130) {
         currentPoseDetecting = "sword";
         debugWristKp = rightWrist;
-        debugTargetKp = t.katana;
+        debugTargetKp = dTargets.katanaRight;
       } else if (isLeftWristInKatana && leftAngle <= 130) {
         currentPoseDetecting = "sword";
         debugWristKp = leftWrist;
-        debugTargetKp = t.katana;
+        debugTargetKp = dTargets.katanaLeft;
       }
     }
 
@@ -772,155 +846,7 @@ function drawSkeleton(poses) {
     ctx.scale(-1, 1); // 鏡像変換
 
     // ── 🎯 骨格ロスト時でも「的（ガイド円）」を絶対に強制描画 ──
-    if (gameStatus === "selecting") {
-      let p1GS_Active = false;
-      let p1KT_Active = false;
-      let p1LS_Active = false;
-
-      let p2GS_Active = false;
-      let p2KT_Active = false;
-      let p2LS_Active = false;
-
-      if (poses && poses.length > 0) {
-        poses.forEach((pose) => {
-          if (pose.score < 0.15) return;
-          try {
-            const leftShoulder = pose.keypoints[11];
-            const rightShoulder = pose.keypoints[12];
-            const leftWrist = pose.keypoints[15];
-            const rightWrist = pose.keypoints[16];
-            const nose = pose.keypoints[0];
-
-            let poseCenterX = 200;
-            if (leftShoulder && rightShoulder && leftShoulder.score > 0.15 && rightShoulder.score > 0.15) {
-              poseCenterX = (leftShoulder.x + rightShoulder.x) / 2;
-            } else if (nose && nose.score > 0.15) {
-              poseCenterX = nose.x;
-            } else if (leftWrist && leftWrist.score > 0.15) {
-              poseCenterX = leftWrist.x;
-            } else if (rightWrist && rightWrist.score > 0.15) {
-              poseCenterX = rightWrist.x;
-            }
-
-            const isP1 = poseCenterX > 200;
-            const selState = isP1 ? selectionState.player1 : selectionState.player2;
-
-            const getDrawRadius = (wKey) => {
-              return (selState.detectingWeapon === wKey) ? KEEP_RADIUS : TARGET_RADIUS;
-            };
-
-            if (isP1) {
-              const t = TARGETS.player1;
-              const lsRad = getDrawRadius("lightsaber");
-              const gsRad = getDrawRadius("greatsword");
-              const ktRad = getDrawRadius("sword");
-
-              if (rightWrist && leftWrist && rightWrist.score > 0.15 && leftWrist.score > 0.15) {
-                const rDist = Math.hypot(rightWrist.x - t.lightsaber.x, rightWrist.y - t.lightsaber.y);
-                const lDist = Math.hypot(leftWrist.x - t.lightsaber.x, leftWrist.y - t.lightsaber.y);
-                if (rDist <= lsRad && lDist <= lsRad) {
-                  p1LS_Active = true;
-                }
-              }
-              const isRightWristInGS = rightWrist && rightWrist.score > 0.15 && Math.hypot(rightWrist.x - t.greatsword.x, rightWrist.y - t.greatsword.y) <= gsRad;
-              const isLeftWristInGS = leftWrist && leftWrist.score > 0.15 && Math.hypot(leftWrist.x - t.greatsword.x, leftWrist.y - t.greatsword.y) <= gsRad;
-              const isRightWristAboveShoulder = rightShoulder && rightWrist && rightWrist.y < rightShoulder.y;
-              const isLeftWristAboveShoulder = leftShoulder && leftWrist && leftWrist.y < leftShoulder.y;
-
-              if (isRightWristInGS && isRightWristAboveShoulder) p1GS_Active = true;
-              if (isLeftWristInGS && isLeftWristAboveShoulder) p1GS_Active = true;
-
-              const leftElbow = pose.keypoints[13];
-              const rightElbow = pose.keypoints[14];
-              
-              let rightAngle = 180;
-              if (rightShoulder && rightElbow && rightWrist) {
-                rightAngle = getAngle(rightShoulder, rightElbow, rightWrist);
-              }
-              let leftAngle = 180;
-              if (leftShoulder && leftElbow && leftWrist) {
-                leftAngle = getAngle(leftShoulder, leftElbow, leftWrist);
-              }
-
-              if (rightWrist && rightWrist.score > 0.15 && Math.hypot(rightWrist.x - t.katana.x, rightWrist.y - t.katana.y) <= ktRad && rightAngle <= 130) {
-                p1KT_Active = true;
-              }
-              if (leftWrist && leftWrist.score > 0.15 && Math.hypot(leftWrist.x - t.katana.x, leftWrist.y - t.katana.y) <= ktRad && leftAngle <= 130) {
-                p1KT_Active = true;
-              }
-            } else {
-              const t = TARGETS.player2;
-              const lsRad = getDrawRadius("lightsaber");
-              const gsRad = getDrawRadius("greatsword");
-              const ktRad = getDrawRadius("sword");
-
-              if (rightWrist && leftWrist && rightWrist.score > 0.15 && leftWrist.score > 0.15) {
-                const rDist = Math.hypot(rightWrist.x - t.lightsaber.x, rightWrist.y - t.lightsaber.y);
-                const lDist = Math.hypot(leftWrist.x - t.lightsaber.x, leftWrist.y - t.lightsaber.y);
-                if (rDist <= lsRad && lDist <= lsRad) {
-                  p2LS_Active = true;
-                }
-              }
-              const isRightWristInGS = rightWrist && rightWrist.score > 0.15 && Math.hypot(rightWrist.x - t.greatsword.x, rightWrist.y - t.greatsword.y) <= gsRad;
-              const isLeftWristInGS = leftWrist && leftWrist.score > 0.15 && Math.hypot(leftWrist.x - t.greatsword.x, leftWrist.y - t.greatsword.y) <= gsRad;
-              const isRightWristAboveShoulder = rightShoulder && rightWrist && rightWrist.y < rightShoulder.y;
-              const isLeftWristAboveShoulder = leftShoulder && leftWrist && leftWrist.y < leftShoulder.y;
-
-              if (isRightWristInGS && isRightWristAboveShoulder) p2GS_Active = true;
-              if (isLeftWristInGS && isLeftWristAboveShoulder) p2GS_Active = true;
-
-              const leftElbow = pose.keypoints[13];
-              const rightElbow = pose.keypoints[14];
-              
-              let rightAngle = 180;
-              if (rightShoulder && rightElbow && rightWrist) {
-                rightAngle = getAngle(rightShoulder, rightElbow, rightWrist);
-              }
-              let leftAngle = 180;
-              if (leftShoulder && leftElbow && leftWrist) {
-                leftAngle = getAngle(leftShoulder, leftElbow, leftWrist);
-              }
-
-              if (rightWrist && rightWrist.score > 0.15 && Math.hypot(rightWrist.x - t.katana.x, rightWrist.y - t.katana.y) <= ktRad && rightAngle <= 130) {
-                p2KT_Active = true;
-              }
-              if (leftWrist && leftWrist.score > 0.15 && Math.hypot(leftWrist.x - t.katana.x, leftWrist.y - t.katana.y) <= ktRad && leftAngle <= 130) {
-                p2KT_Active = true;
-              }
-            }
-          } catch (poseErr) {
-            console.log("当たり判定エラー:", poseErr);
-          }
-        });
-      }
-
-      const drawTargetCircle = (center, active, defaultFill, defaultStroke, label, weaponKey, pKey) => {
-        try {
-          const sel = selectionState[pKey];
-          const radius = (sel.detectingWeapon === weaponKey) ? KEEP_RADIUS : TARGET_RADIUS;
-
-          ctx.beginPath();
-          ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
-          ctx.fillStyle = active ? 'rgba(46, 204, 113, 0.35)' : defaultFill;
-          ctx.strokeStyle = active ? '#2ecc71' : defaultStroke;
-          ctx.lineWidth = active ? 4.5 : 3.5;
-          ctx.fill();
-          ctx.stroke();
-
-          ctx.save();
-          ctx.scale(-1, 1);
-          ctx.font = "bold 12px sans-serif";
-          ctx.fillStyle = "#ffffff";
-          ctx.shadowBlur = 4;
-          ctx.shadowColor = "black";
-          ctx.textAlign = "center";
-          ctx.fillText(label, -center.x, center.y - radius - 6);
-          ctx.restore();
-        } catch (circleErr) {}
-      };
-
-
-    }
+    // (追従型サークルは poses.forEach ループ内で人基準で描画されるため、この静的ループは不要になりました)
 
     // ── 骨格線 ＆ キーポイント描画 ──
     if (poses && poses.length > 0) {
@@ -997,6 +923,57 @@ function drawSkeleton(poses) {
           // スイング検出（決定・攻撃）は常時裏でトラッキングを実行
           processMovementLogics(pose, playerKey);
 
+          // 武器選択画面かつselectingフェーズのみ、体に追従する的（サークル）をリアルタイム描画！
+          if (gameStatus === "selecting" && currentActiveScreen === "selectionScreen") {
+            const dTargets = getDynamicTargets(pose);
+            const scale = dTargets.scaleRatio;
+            const selState = selectionState[playerKey];
+
+            // サークル描画共通ヘルパー
+            const drawTargetCircle = (center, active, defaultFill, defaultStroke, label, radius) => {
+              try {
+                ctx.beginPath();
+                ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
+                ctx.fillStyle = active ? 'rgba(46, 204, 113, 0.35)' : defaultFill;
+                ctx.strokeStyle = active ? '#2ecc71' : defaultStroke;
+                ctx.lineWidth = active ? 4.5 : 3.5;
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.save();
+                ctx.scale(-1, 1);
+                ctx.font = "bold 12px sans-serif";
+                ctx.fillStyle = "#ffffff";
+                ctx.shadowBlur = 4;
+                ctx.shadowColor = "black";
+                ctx.textAlign = "center";
+                ctx.fillText(label, -center.x, center.y - radius - 6);
+                ctx.restore();
+              } catch (circleErr) {}
+            };
+
+            const getDrawRadius = (wKey) => {
+              const base = (selState.detectingWeapon === wKey) ? KEEP_RADIUS : TARGET_RADIUS;
+              return base * scale;
+            };
+
+            // 1. 大剣的 (頭の上)
+            const gsRad = getDrawRadius("greatsword");
+            const gsActive = selState.detectingWeapon === "greatsword";
+            drawTargetCircle(dTargets.greatsword, gsActive, 'rgba(255, 170, 0, 0.15)', '#ffaa00', "大剣の的", gsRad);
+
+            // 2. ライトセーバー的 (胸の前)
+            const lsRad = getDrawRadius("lightsaber");
+            const lsActive = selState.detectingWeapon === "lightsaber";
+            drawTargetCircle(dTargets.lightsaber, lsActive, 'rgba(0, 242, 254, 0.15)', '#00f2fe', "光剣の的", lsRad);
+
+            // 3. 刀的 (腰の横)
+            const ktRad = getDrawRadius("sword");
+            const ktActive = selState.detectingWeapon === "sword";
+            const ktTarget = isPlayer1 ? dTargets.katanaRight : dTargets.katanaLeft;
+            drawTargetCircle(ktTarget, ktActive, 'rgba(255, 65, 108, 0.15)', '#ff416c', "刀の的", ktRad);
+          }
+
           // 武器選択画面にいる時のみ、構えの吸い付き判定を行う
           if (gameStatus === "selecting" && currentActiveScreen === "selectionScreen") {
             handleWeaponSelection(pose, playerKey, regStatusEl, cardEl);
@@ -1036,7 +1013,7 @@ async function detectionLoop() {
           score: kp.score || 1.0 // 描画ロスト防止
         }))
       };
-    });
+    }).slice(0, 2); // 確実に最大2人までに制限！
     
     // 検出インジケーターと状態の更新
     if (poses.length > 0) {

@@ -778,6 +778,20 @@ async function checkAllWeaponsSelected() {
     if (selectionState.player1.locked && selectionState.player2.locked) {
       statusText.textContent = "武器確定！抜刀準備をしてください！";
       
+      // 💡 1.5秒のディレイを待たず、確定した【その瞬間に即座に】Firestoreへ上書き送信してクリーンな受け皿を作成！
+      const battleDocRef = doc(db, "shinken_rooms", "battle");
+      await setDoc(battleDocRef, {
+        status: "drawing",
+        match_status: "drawing",
+        p1_weapon: selectionState.player1.selectedWeapon,
+        p2_weapon: selectionState.player2.selectedWeapon,
+        p1_ready: false,
+        p2_ready: false,
+        p1_score: 0,
+        p2_score: 0
+      });
+      console.log("[Firestore即時初期化] 武器確定直後にクリーンな受け皿を作成しました。");
+      
       setTimeout(async () => {
         gameStatus = "drawing";
         updatePhaseUI();
@@ -789,18 +803,6 @@ async function checkAllWeaponsSelected() {
 
         p1Card.classList.remove('ready');
         p2Card.classList.remove('ready');
-
-        const battleDocRef = doc(db, "shinken_rooms", "battle");
-        await setDoc(battleDocRef, {
-          status: "drawing",
-          match_status: "drawing",
-          p1_weapon: selectionState.player1.selectedWeapon,
-          p2_weapon: selectionState.player2.selectedWeapon,
-          p1_ready: false,
-          p2_ready: false,
-          p1_score: 0,
-          p2_score: 0
-        }); // merge: true を削除してデータベース上のゴミデータを毎回完全上書き消去！
       }, 1500);
     }
   } catch (e) {
